@@ -1727,10 +1727,10 @@ module riscv_id_stage
 
           mult_is_clpx_ex_o         <= is_clpx;
           mult_clpx_shift_ex_o      <= instr[14:13];
-          //if (is_clpx) 
-            //mult_clpx_img_ex_o        <= instr[25];
-          //else
-            //mult_clpx_img_ex_o      <= '0;
+          if (is_clpx) 
+            mult_clpx_img_ex_o      <= instr[25];
+          else
+            mult_clpx_img_ex_o      <= '0;
         end
 
         // APU pipeline
