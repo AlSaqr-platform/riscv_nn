@@ -288,6 +288,7 @@ module riscv_ex_stage
           regfile_we_wb_o    = 1'b1;
           regfile_waddr_wb_o = apu_waddr;
           regfile_wdata_wb_o = apu_result;
+      end
       if(lsu_tosprw_wb[0]) begin// does not work because of latency
           spr_rnn_en = 1'b1;       //spr instead of gpr
           //regfile_waddr_wb_o = regfile_waddr_lsu; 
