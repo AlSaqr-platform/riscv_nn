@@ -158,7 +158,8 @@ module riscv_decoder
   output logic [1:0]                  data_sign_extension_o, // sign extension on read data from data memory / NaN boxing
   output logic [1:0]                  data_reg_offset_o, // offset in byte inside register for stores
   output logic                        data_load_event_o, // data request is in the special event range
-  output logic [2:0]                  lsu_tospr_o, // ls to spr (RNN extension) RNN_EXT
+  output logic [2:0]                  lsu_tosprw_o, // ls to weight spr (RNN extension) RNN_EXT
+  output logic [1:0]                  lsu_tospra_o, // ls to activation spr (RNN extension) RNN_EXT
 
   // hwloop signals
   output logic [2:0]                  hwloop_we_o, // write enable for hwloop regs
@@ -306,7 +307,8 @@ module riscv_decoder
     data_reg_offset_o           = 2'b00;
     data_req                    = 1'b0;
     data_load_event_o           = 1'b0;
-    lsu_tospr_o                 = 3'b0; // RNN_EXT
+    lsu_tosprw_o                = 3'b0; // RNN_EXT
+    lsu_tospra_o                = 2'b0; // RNN_EXT
 
     illegal_insn_o              = 1'b0;
     ebrk_insn_o                 = 1'b0;
@@ -537,20 +539,61 @@ module riscv_decoder
 // `ifdef RNN_EXTENSION
       OPCODE_MAC_LOAD: begin // RNN Extension RNN_EXT
 
+        // alu_op_b_mux_sel_o = OP_B_IMM; --> to be included in v3
+        //       imm_b_mux_sel_o    = IMMB_MACL; --> to be included in v3
+
         myfancyinstrucion       = 1'b1; // just for debugging :)
-        regfile_alu_we          = 1'b1;
+        
         rega_used_o             = 1'b1;
         regb_used_o             = 1'b1;
 
         regc_used_o             = 1'b1;
         regc_mux_o              = REGC_RD;
 
-        lsu_tospr_o             = {instr_rdata_i[26], instr_rdata_i[25], 1'b1};  // 01 SPR[0]
-                                                   // 11 SPR[1]
-        alu_en_o                = 1'b1; // ALU for lwincrement part
+        // check if load part is issued
+        // i24 and i23 cannot be both high --> illegal insn control
+        // if i24 is high --> update weight
+        // if i23 is high --> update activation
+        // if both are low --> only MAC insn
+        if (instr_rdata_i[24] & instr_rdata_i[23])
+          illegal_insn_o          = 1'b1;
+        else if (instr_rdata_i[24] ) begin
+          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b1};
+          lsu_tospra_o          = { instr_rdata_i[20], 1'b0};
+          alu_en_o                = 1'b1; // ALU for lwincrement part
+          regfile_alu_we          = 1'b1;
+          data_req                = 1'b1;    // date req enabled for load part
+          data_type_o             = 2'b00;   // probably WORD
+        end else if (instr_rdata_i[23]) begin
+          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b0};
+          lsu_tospra_o          = { instr_rdata_i[20], 1'b1};
+          alu_en_o                = 1'b1; // ALU for lwincrement part
+          regfile_alu_we          = 1'b1;
+          data_req                = 1'b1;    // date req enabled for load part
+          data_type_o             = 2'b00;   // probably WORD
+        end else begin
+          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b0};
+          lsu_tospra_o          = { instr_rdata_i[20], 1'b0}; 
+          alu_en_o                = 1'b0; // ALU for lwincrement part
+          regfile_alu_we          = 1'b0;
+          data_req                = 1'b0;    // date req enabled for load part
+          data_type_o             = 2'b00;   // probably WORD
+        end
 
-        data_req                = 1'b1;    // date req enabled for load part
-        data_type_o             = 2'b00;   // probably WORD
+        // if (instr_rdata_i[26]) begin
+        // lsu_tospr_o             = {1'b0, instr_rdata_i[25], 1'b1};  // 01 SPR[0] // 11 SPR[1]
+        // alu_en_o                = 1'b1; // ALU for lwincrement part
+        // regfile_alu_we          = 1'b1;
+        // data_req                = 1'b1;    // date req enabled for load part
+        // data_type_o             = 2'b00;   // probably WORD
+        // end else begin
+        // lsu_tospr_o             = {1'b0, instr_rdata_i[25], 1'b0};  // 01 SPR[0] // 11 SPR[1]
+        // alu_en_o                = 1'b0; // ALU for lwincrement part
+        // regfile_alu_we          = 1'b0;
+        // data_req                = 1'b0;    // date req enabled for load part
+        // data_type_o             = 2'b00;   // probably WORD
+        // end
+
 
         alu_operator_o          = ALU_ADD4; // increment size for load part (WORD)
         prepost_useincr_o       = 1'b0; // enable post-access load
@@ -559,70 +602,47 @@ module riscv_decoder
 
         //data_sign_extension_o = {1'b0,~instr_rdata_i[14]}; // is this necessary?
 
-        alu_op_b_mux_sel_o      = OP_B_REGB_OR_FWD;
+        alu_op_b_mux_sel_o      = OP_B_REGB_OR_FWD; // --> no more valid for v3. Operand b for the MAC fetched from SPRs
         
-        case (instr_rdata_i[31:27])
-
-
-        5'b10111: begin //M&L SDOTP S-S
-           mult_dot_en             = 1'b1;   // enable dotp unit
-           mult_dot_signed_o       = 2'b11; // set for signed-signed interpretation of operands
+        case (instr_rdata_i[31:25])
+        7'b1111100: begin //M&L SDOTP S-S
+          mult_dot_en             = 1'b1;   // enable dotp unit
+          mult_dot_signed_o       = 2'b11; // set for signed-signed interpretation of operands
           end
-        5'b10101: begin //M&L SDOTP U-S
-
-           mult_dot_en             = 1'b1;   // enable dotp unit
-           mult_dot_signed_o       = 2'b01;  // set for unsigned-signed interpretation of operands
-           
+        7'b1110100: begin //M&L SDOTP U-S
+          mult_dot_en             = 1'b1;   // enable dotp unit
+          mult_dot_signed_o       = 2'b01;  // set for unsigned-signed interpretation of operands
           end
-        5'b10100: begin //M&L SDOTP U-U
-
-           mult_dot_en             = 1'b1;   // enable dotp unit
-           mult_dot_signed_o       = 2'b00;  // set for unsigned-unsigned interpretation of operands
-
+        7'b1110000: begin //M&L SDOTP U-U
+          mult_dot_en             = 1'b1;   // enable dotp unit
+          mult_dot_signed_o       = 2'b00;  // set for unsigned-unsigned interpretation of operands
           end
-        5'b10011: begin //M&L SDOTP S-U
-
-           mult_dot_en             = 1'b1;   // enable dotp unit
-           mult_dot_signed_o       = 2'b10;  // set for signed-unsigned interpretation of operands
-           
+        7'b1101100: begin //M&L SDOTP S-U
+          mult_dot_en             = 1'b1;   // enable dotp unit
+          mult_dot_signed_o       = 2'b10;  // set for signed-unsigned interpretation of operands
         end
-
         default : begin
-           illegal_insn_o          = 1'b1;
-
+          illegal_insn_o          = 1'b1;
           end
         endcase
 
 
         case (instr_rdata_i[14:12])
-
         3'b000: begin // 16-b precision
-
-           mult_operator_o         = MUL_DOT16; // set for 16-bit SIMD sum-dot-product
-
+          mult_operator_o         = MUL_DOT16; // set for 16-bit SIMD sum-dot-product
           end
-
         3'b001: begin // 8-bit precision
-
-           mult_operator_o         = MUL_DOT8; // set for 8-bit SIMD sum-dot-product
-
+          mult_operator_o         = MUL_DOT8; // set for 8-bit SIMD sum-dot-product
           end
-
         3'b010: begin
-           mult_operator_o         = MUL_DOT4;
+          mult_operator_o         = MUL_DOT4;
           end
-
         3'b011: begin
-
-           mult_operator_o         = MUL_DOT2;
-
+          mult_operator_o         = MUL_DOT2;
         end
-
         default: begin //default condition
-           illegal_insn_o          = 1'b1;
-
+          illegal_insn_o          = 1'b1;
           end
-
         endcase
 
       end  

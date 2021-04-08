@@ -149,7 +149,8 @@ module riscv_core
   logic              trap_addr_mux;
   logic              lsu_load_err;
   logic              lsu_store_err;
-  logic [2:0]        lsu_tospr_ex;  //RNN_EXT
+  logic [2:0]        lsu_tosprw_ex;  //RNN_EXT
+  logic [1:0]        lsu_tospra_ex; //RNN_EXT
 
   // ID performance counter signals
   logic        is_decoding;
@@ -289,8 +290,9 @@ module riscv_core
   logic        data_misaligned_ex;
 
   logic [31:0] lsu_rdata;
+  logic        data_rvalid_ex;
 
- logic        loadComputeVLIW_ex; //RNN_EXT
+  logic        loadComputeVLIW_ex; //RNN_EXT
   // stall control
   logic        halt_if;
   logic        id_ready;
@@ -757,7 +759,8 @@ module riscv_core
     .data_err_i                   ( data_err_pmp         ),
     .data_err_ack_o               ( data_err_ack         ),
 
-    .lsu_tospr_ex_o               (lsu_tospr_ex          ), //RNN_EXT
+    .lsu_tosprw_ex_o              (lsu_tosprw_ex         ), //RNN_EXT
+    .lsu_tospra_ex_o              (lsu_tospra_ex         ), //RNN_EXT
     .loadComputeVLIW_ex_i         (loadComputeVLIW_ex    ), //RNN_EXT
 
     // Interrupt Signals
@@ -865,6 +868,7 @@ module riscv_core
 
     .mult_multicycle_o          ( mult_multicycle              ), // to ID/EX pipe registers
     .current_cycle_i            ( current_cycle_csr            ), // added for ivec sb : Current cycle for mixed preision
+    
     .computeLoadVLIW_ex_o       (loadComputeVLIW_ex            ), //RNN_EXT
     // FPU
     .fpu_prec_i                 ( fprec_csr                    ),
@@ -906,7 +910,9 @@ module riscv_core
 
     .lsu_en_i                   ( data_req_ex                  ),
     .lsu_rdata_i                ( lsu_rdata                    ),
-    .lsu_tospr_ex_i             ( lsu_tospr_ex                 ), //RNN_EXT 
+    .data_rvalid_ex_i           ( data_rvalid_i                ),
+    .lsu_tosprw_ex_i            ( lsu_tosprw_ex                ), //RNN_EXT 
+    .lsu_tospra_ex_i            ( lsu_tospra_ex                ), //RNN_EXT
     // interface with CSRs
     .csr_access_i               ( csr_access_ex                ),
     .csr_rdata_i                ( csr_rdata                    ),
@@ -935,6 +941,7 @@ module riscv_core
     .regfile_alu_wdata_fw_o     ( regfile_alu_wdata_fw         ),
 
     // stall control
+    .is_decoding_i              ( is_decoding                  ),
     .lsu_ready_ex_i             ( lsu_ready_ex                 ),
     .lsu_err_i                  ( data_err_pmp                 ),
 

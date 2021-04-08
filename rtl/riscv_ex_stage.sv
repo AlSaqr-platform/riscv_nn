@@ -141,7 +141,9 @@ module riscv_ex_stage
 
   input logic                            lsu_en_i,
   input logic [31:0]                     lsu_rdata_i,
-  input logic [2:0]                      lsu_tospr_ex_i,
+  input logic [2:0]                      lsu_tosprw_ex_i,
+  input logic [1:0]                      lsu_tospra_ex_i,
+  input logic                            data_rvalid_ex_i,
 
   // RNN Extension
   output logic                           computeLoadVLIW_ex_o,
@@ -175,6 +177,7 @@ module riscv_ex_stage
   output logic                           branch_decision_o,
 
   // Stall Control
+  input logic                            is_decoding_i, // Used to mask data Dependency inside the APU dispatcher in case of an istruction non valid
   input logic                            lsu_ready_ex_i, // EX part of LSU is done
   input logic                            lsu_err_i,
 
@@ -215,13 +218,19 @@ module riscv_ex_stage
 
   // RNN Extensions   //RNN_EXT
   logic           spr_rnn_en;  //RNN_EXT
-  logic [3:0][31:0] spr_rnn, spr_rnn_n;  //RNN_EXT
-  logic [2:0]     lsu_tospr_wb;  //RNN_EXT
+  logic [3:0][31:0] wspr_rnn, wspr_rnn_n;  //RNN_EXT
+  logic [1:0][31:0] aspr_rnn, aspr_rnn_n;  //RNN_EXT
+  logic [2:0]     lsu_tosprw_wb;  //RNN_EXT
+  logic [1:0]     lsu_tospra_wb;  //RNN_EXT
   logic [5:0]     regfile_alu_waddr2_wb;  //RNN_EXT
   logic [31:0]    mult_dot_op_h_a_ml; //RNN_EXT
   logic [31:0]    mult_dot_op_b_a_ml;  //RNN_EXT
   logic [31:0]    mult_dot_op_n_a_ml; //RNN_EXT
   logic [31:0]    mult_dot_op_c_a_ml; //RNN_EXT
+  logic [31:0]    mult_dot_op_h_b_ml; //RNN_EXT
+  logic [31:0]    mult_dot_op_b_b_ml;  //RNN_EXT
+  logic [31:0]    mult_dot_op_n_b_ml; //RNN_EXT
+  logic [31:0]    mult_dot_op_c_b_ml; //RNN_EXT
   logic           loadComputeVLIW;  //RNN_EXT
 
   assign loadComputeVLIW = alu_en_i & mult_en_i;
@@ -274,8 +283,12 @@ module riscv_ex_stage
       if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
          wb_contention_lsu = 1'b1;
 //         $error("%t, wb-contention", $time);
-      end
-      if(lsu_tospr_wb[0]) begin// does not work because of latency
+      // APU two-cycle operations are written back on LSU port
+      end else if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
+          regfile_we_wb_o    = 1'b1;
+          regfile_waddr_wb_o = apu_waddr;
+          regfile_wdata_wb_o = apu_result;
+      if(lsu_tosprw_wb[0]) begin// does not work because of latency
           spr_rnn_en = 1'b1;       //spr instead of gpr
           //regfile_waddr_wb_o = regfile_waddr_lsu; 
           //regfile_wdata_wb_o = mult_result_p;
@@ -283,7 +296,7 @@ module riscv_ex_stage
           // regfile_waddr_wb_o = regfile_alu_waddr2_wb;
       end
     end
-    if(lsu_tospr_wb[0]) begin 
+    if(lsu_tosprw_wb[0]) begin 
       regfile_waddr_wb_o = regfile_waddr_lsu; 
       regfile_wdata_wb_o = mult_result_p;
     end
@@ -355,15 +368,29 @@ module riscv_ex_stage
                                   (mult_operator_i == MIXED_MUL_8x16)   |   
                                   (mult_operator_i == MIXED_MUL_4x16)   |                                    
                                   (mult_operator_i == MIXED_MUL_2x16)}} &   
-                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospr_ex_i[2:1]] : mult_dot_op_h_a_i);
+                              ((lsu_tosprw_ex_i[0]) ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_h_a_i);
   assign mult_dot_op_b_a_ml = {32{(mult_operator_i == MUL_DOT8)        |   
                                   (mult_operator_i == MIXED_MUL_2x8)   |   
                                   (mult_operator_i == MIXED_MUL_4x8)}} &   
-                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospr_ex_i[2:1]] : mult_dot_op_b_a_i);
+                              ((lsu_tosprw_ex_i[0]) ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_b_a_i);
   assign mult_dot_op_n_a_ml = {32{(mult_operator_i == MUL_DOT4)        | 
                                   (mult_operator_i == MIXED_MUL_2x4)}} & 
-                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospr_ex_i[2:1]] : mult_dot_op_n_a_i);
-  assign mult_dot_op_c_a_ml = {32{(mult_operator_i == MUL_DOT2)}}  & ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospr_ex_i[2:1]] : mult_dot_op_c_a_i);
+                              ((lsu_tosprw_ex_i[0]) ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_n_a_i);
+  assign mult_dot_op_c_a_ml = {32{(mult_operator_i == MUL_DOT2)}}  & ((lsu_tosprw_ex_i[0]) ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_c_a_i);
+  //NEED TO CHECK THIS PART!!!!
+  /*assign mult_dot_op_h_b_ml = {32{(mult_operator_i == MUL_DOT16)      |   
+                                  (mult_operator_i == MIXED_MUL_8x16)   |   
+                                  (mult_operator_i == MIXED_MUL_4x16)   |                                    
+                                  (mult_operator_i == MIXED_MUL_2x16)}} &   
+                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_h_b_i);
+  assign mult_dot_op_b_b_ml = {32{(mult_operator_i == MUL_DOT8)        |   
+                                  (mult_operator_i == MIXED_MUL_2x8)   |   
+                                  (mult_operator_i == MIXED_MUL_4x8)}} &   
+                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_b_b_i);
+  assign mult_dot_op_n_b_ml = {32{(mult_operator_i == MUL_DOT4)        | 
+                                  (mult_operator_i == MIXED_MUL_2x4)}} & 
+                              ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_n_b_i);
+  assign mult_dot_op_c_b_ml = {32{(mult_operator_i == MUL_DOT2)}}  & ((lsu_tospr_ex_i[0]) ? spr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_c_b_i);*/
 
    
   riscv_mult
@@ -386,7 +413,7 @@ module riscv_ex_stage
     .op_c_i          ( mult_operand_c_i     ),
     .imm_i           ( mult_imm_i           ),
 
-    .dot_op_h_a_i      ( mult_dot_op_h_a_ml     ),
+    .dot_op_h_a_i      ( mult_dot_op_h_a_ml     ), //even this block of code has to be checked due to previous modifications
     .dot_op_h_b_i      ( mult_dot_op_h_b_i      ),
     .dot_op_b_a_i      ( mult_dot_op_b_a_ml     ),
     .dot_op_b_b_i      ( mult_dot_op_b_b_i      ),
@@ -437,6 +464,7 @@ module riscv_ex_stage
          .active_o           ( apu_active                     ),
          .stall_o            ( apu_stall                      ),
 
+         .is_decoding_i      ( is_decoding_i                  ),
          .read_regs_i        ( apu_read_regs_i                ),
          .read_regs_valid_i  ( apu_read_regs_valid_i          ),
          .read_dep_o         ( apu_read_dep_o                 ),
@@ -601,21 +629,25 @@ module riscv_ex_stage
    assign apu_busy_o = apu_active;
 
   // SPR
-  assign spr_rnn_n[0] = (spr_rnn_en && lsu_tospr_wb[2:1]==2'b00) ? lsu_rdata_i : spr_rnn[0]; //RNN_EXT
-  assign spr_rnn_n[1] = (spr_rnn_en && lsu_tospr_wb[2:1]==2'b01) ? lsu_rdata_i : spr_rnn[1]; //RNN_EXT
-  assign spr_rnn_n[2] = (spr_rnn_en && lsu_tospr_wb[2:1]==2'b10) ? lsu_rdata_i : spr_rnn[2]; //RNN_EXT
-  assign spr_rnn_n[3] = (spr_rnn_en && lsu_tospr_wb[2:1]==2'b11) ? lsu_rdata_i : spr_rnn[3]; //RNN_EXT
+  assign wspr_rnn_n[0] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b00) ? lsu_rdata_i : wspr_rnn[0]; //RNN_EXT
+  assign wspr_rnn_n[1] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b01) ? lsu_rdata_i : wspr_rnn[1]; //RNN_EXT
+  assign wspr_rnn_n[2] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b10) ? lsu_rdata_i : wspr_rnn[2]; //RNN_EXT
+  assign wspr_rnn_n[3] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b11) ? lsu_rdata_i : wspr_rnn[3]; //RNN_EXT
+  assign aspr_rnn_n[0] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b0)    ? lsu_rdata_i : aspr_rnn[0]; //RNN_EXT
+  assign aspr_rnn_n[1] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b1)    ? lsu_rdata_i : aspr_rnn[1]; //RNN_EXT
 
 always_ff @(posedge clk, negedge rst_n)
   begin : SPR
     if (~rst_n)
     begin
-      spr_rnn   <= '0;
+      wspr_rnn   <= '0;
+      aspr_rnn   <= '0;
       mult_result_p <= '0; //RNN_EXT
     end
     else
     begin
-        spr_rnn       <= spr_rnn_n;
+        wspr_rnn      <= wspr_rnn_n;
+        aspr_rnn      <= aspr_rnn_n;
         mult_result_p <= mult_result_n; //RNN_EXT
     end
   end
@@ -631,7 +663,8 @@ always_ff @(posedge clk, negedge rst_n)
     begin
       regfile_waddr_lsu   <= '0;
       regfile_we_lsu      <= 1'b0;
-      lsu_tospr_wb        <= 2'b0;  //RNN_EXT
+      lsu_tosprw_wb        <= 3'b0;  //RNN_EXT
+      lsu_tospra_wb        <= 2'b0;
       regfile_alu_waddr2_wb <= 'b0;  //RNN_EXT
     end
     else
@@ -639,7 +672,8 @@ always_ff @(posedge clk, negedge rst_n)
       if (ex_valid_o) // wb_ready_i is implied
       begin
         regfile_we_lsu    <= regfile_we_i & ~lsu_err_i;
-        lsu_tospr_wb <= lsu_tospr_ex_i; //RNN_EXT//RNN_EXT
+        lsu_tosprw_wb <= lsu_tosprw_ex_i; //RNN_EXT//RNN_EXT
+        lsu_tospra_wb <= lsu_tospra_ex_i;//RNN_EXT
         regfile_alu_waddr2_wb <= regfile_alu_waddr2_i; //RNN_EXT
         if (regfile_we_i & ~lsu_err_i ) begin
           regfile_waddr_lsu <= regfile_waddr_i;

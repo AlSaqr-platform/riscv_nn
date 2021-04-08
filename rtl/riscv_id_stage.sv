@@ -234,7 +234,8 @@ module riscv_id_stage
     output logic                           data_err_ack_o,
 
     //RNN_EXT
-    output logic [2:0]                     lsu_tospr_ex_o,
+    output logic [2:0]                     lsu_tosprw_ex_o,
+    output logic [1:0]                     lsu_tospra_ex_o,
     input logic                            loadComputeVLIW_ex_i,
 
     // Interrupt signals
@@ -326,6 +327,7 @@ module riscv_id_stage
   logic [31:0] imm_shuffleh_type;
   logic [31:0] imm_shuffle_type;
   logic [31:0] imm_clip_type;
+  logic [31:0] imm_macload_type;
 
   logic [31:0] imm_a;       // contains the immediate for operand b
   logic [31:0] imm_b;       // contains the immediate for operand b
@@ -415,7 +417,8 @@ module riscv_id_stage
   logic [1:0]  data_reg_offset_id;
   logic        data_req_id;
   logic        data_load_event_id;
-  logic [2:0]  lsu_tospr_id;   //RNN_EXT
+  logic [2:0]  lsu_tosprw_id;   //RNN_EXT
+  logic [1:0]  lsu_tospra_id;   //RNN_EXT
 
   // hwloop signals
   logic [N_HWLP_BITS-1:0] hwloop_regid, hwloop_regid_int;
@@ -536,6 +539,10 @@ module riscv_id_stage
   // TODO: check if this can be shared with the bit-manipulation unit
   assign imm_clip_type    = (32'h1 << instr[24:20]) - 1;
 
+  // MAC&LOAD Immediate. This selects which SPR to be used in current operation and,
+  // eventually, to be updated
+  assign imm_macload_type = {27'h0, instr[24:20]};
+
   //-----------------------------------------------------------------------------
   //-- FPU Register file enable:
   //-- Taken from Cluster Config Reg if FPU reg file exists, or always disabled
@@ -568,7 +575,7 @@ module riscv_id_stage
   // Used for prepost load/store and multiplier
   assign regfile_alu_waddr_id = regfile_alu_waddr_mux_sel ?
                                 regfile_waddr_id : regfile_addr_ra_id;
-  assign regfile_alu_waddr2_id = lsu_tospr_id[0] ?  regfile_addr_ra_id : 'b0; 
+  assign regfile_alu_waddr2_id = (lsu_tosprw_id[0] | lsu_tospra_id[0]) ?  regfile_addr_ra_id : 'b0; 
 
   // Forwarding control signals
   assign reg_d_ex_is_reg_a_id  = (regfile_waddr_ex_o     == regfile_addr_ra_id) && (rega_used_dec == 1'b1) && (regfile_addr_ra_id != '0);
@@ -732,6 +739,7 @@ module riscv_id_stage
       IMMB_VU:     imm_b = imm_vu_type;
       IMMB_SHUF:   imm_b = imm_shuffle_type;
       IMMB_CLIP:   imm_b = {1'b0, imm_clip_type[31:1]};
+      IMMB_MACL:   imm_b = imm_macload_type;
       default:     imm_b = imm_i_type;
     endcase
   end
@@ -1228,7 +1236,8 @@ module riscv_id_stage
     .data_sign_extension_o           ( data_sign_ext_id          ),
     .data_reg_offset_o               ( data_reg_offset_id        ),
     .data_load_event_o               ( data_load_event_id        ),
-    .lsu_tospr_o                     ( lsu_tospr_id              ), //RNN_EXT
+    .lsu_tosprw_o                    ( lsu_tosprw_id              ), //RNN_EXT
+    .lsu_tospra_o                    ( lsu_tospra_id              ), //RNN_EXT
 
     // hwloop signals
     .hwloop_we_o                     ( hwloop_we_int             ),
@@ -1624,7 +1633,8 @@ module riscv_id_stage
       data_reg_offset_ex_o        <= 2'b0;
       data_req_ex_o               <= 1'b0;
       data_load_event_ex_o        <= 1'b0;
-      lsu_tospr_ex_o              <= 2'b0;
+      lsu_tosprw_ex_o             <= 3'b0;
+      lsu_tospra_ex_o             <= 2'b0;
 
       data_misaligned_ex_o        <= 1'b0;
 
@@ -1727,10 +1737,10 @@ module riscv_id_stage
 
           mult_is_clpx_ex_o         <= is_clpx;
           mult_clpx_shift_ex_o      <= instr[14:13];
-          //if (is_clpx) 
-            //mult_clpx_img_ex_o        <= instr[25];
-          //else
-            //mult_clpx_img_ex_o      <= '0;
+          if (is_clpx) 
+            mult_clpx_img_ex_o      <= instr[25];
+          else
+            mult_clpx_img_ex_o      <= '0;
         end
 
         // APU pipeline
@@ -1764,7 +1774,8 @@ module riscv_id_stage
         mux_sel_wcsr_ex_o           <= mux_sel_wcsr;   //Added for ivec sb : Used to write the next_cycle in the csr    
         next_cycle_ex_o             <= next_cycle;     //Added for ivec sb : Value of the next cycle for mixedPrecision
 
-        lsu_tospr_ex_o              <= lsu_tospr_id;
+        lsu_tosprw_ex_o             <= lsu_tosprw_id;
+        lsu_tospra_ex_o             <= lsu_tospra_id;
         data_req_ex_o               <= data_req_id;
         if (data_req_id)
         begin // only needed for LSU when there is an active request
