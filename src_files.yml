@@ -1,16 +1,3 @@
-riscv_regfile_rtl:
-  targets: [
-    rtl,
-    tsmc65,
-    gf22,
-  ]
-  incdirs: [
-    ./rtl/include,
-  ]
-  files: [
-    ./rtl/register_file_test_wrap.sv,
-    ./rtl/riscv_register_file_latch.sv,
-  ]
 
 riscv:
   vlog_opts: [
@@ -47,6 +34,8 @@ riscv:
     ./rtl/riscv_L0_buffer.sv,
     ./rtl/riscv_pmp.sv,
     ./rtl/mixed_precision_controller.sv,
+    ./rtl/register_file_test_wrap.sv,
+    ./rtl/riscv_register_file_latch.sv,
   ]
 riscv_vip_rtl:
   targets: [
@@ -60,21 +49,6 @@ riscv_vip_rtl:
   ]
   flags: [
     skip_synthesis,
-  ]
-
-riscv_regfile_rtl:
-  targets: [
-    rtl,
-    tsmc55,
-    tsmc65,
-    gf22,
-  ]
-  incdirs: [
-    ./rtl/include,
-  ]
-  files: [
-    ./rtl/register_file_test_wrap.sv,
-    ./rtl/riscv_register_file_latch.sv,
   ]
 
 riscv_regfile_verilator:
