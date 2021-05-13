@@ -417,14 +417,14 @@ module riscv_ex_stage
     .op_c_i          ( mult_operand_c_i     ),
     .imm_i           ( mult_imm_i           ),
 
-    .dot_op_h_a_i      ( mult_dot_op_h_a_ml     ), //even this block of code has to be checked due to previous modifications
-    .dot_op_h_b_i      ( mult_dot_op_h_b_i      ),
+    .dot_op_h_a_i      ( mult_dot_op_h_a_ml     ),
+    .dot_op_h_b_i      ( mult_dot_op_h_b_ml     ),
     .dot_op_b_a_i      ( mult_dot_op_b_a_ml     ),
-    .dot_op_b_b_i      ( mult_dot_op_b_b_i      ),
+    .dot_op_b_b_i      ( mult_dot_op_b_b_ml     ),
     .dot_op_n_a_i      ( mult_dot_op_n_a_ml     ),
-    .dot_op_n_b_i      ( mult_dot_op_n_b_i      ),
+    .dot_op_n_b_i      ( mult_dot_op_n_b_ml     ),
     .dot_op_c_a_i      ( mult_dot_op_c_a_ml     ),
-    .dot_op_c_b_i      ( mult_dot_op_c_b_i      ),
+    .dot_op_c_b_i      ( mult_dot_op_c_b_ml     ),
     .dot_op_c_i      ( mult_dot_op_c_i      ),
     .dot_signed_i    ( mult_dot_signed_i    ),
 
