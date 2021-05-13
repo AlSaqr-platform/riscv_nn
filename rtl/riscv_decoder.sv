@@ -114,6 +114,7 @@ module riscv_decoder
   output logic                        mult_sel_subword_o, // Select subwords for 16x16 bit of multiplier
   output logic [1:0]                  mult_signed_mode_o, // Multiplication in signed mode
   output logic [1:0]                  mult_dot_signed_o, // Dot product in signed mode
+  output logic                        dot_spr_operand_o, // dot product with operand in SPR
 
   // FPU
   input logic [C_RM-1:0]              frm_i, // Rounding mode from float CSR
@@ -263,6 +264,7 @@ module riscv_decoder
     mult_signed_mode_o          = 2'b00;
     mult_sel_subword_o          = 1'b0;
     mult_dot_signed_o           = 2'b00;
+    dot_spr_operand_o           = 1'b0;
 
     apu_en                      = 1'b0;
     apu_type_o                  = '0;
@@ -549,6 +551,8 @@ module riscv_decoder
 
         regc_used_o             = 1'b1;
         regc_mux_o              = REGC_RD;
+
+        dot_spr_operand_o       = 1'b1; // 1 if using dotp unit with SPR operand
 
         // check if load part is issued
         // i24 and i23 cannot be both high --> illegal insn control
@@ -1206,19 +1210,19 @@ module riscv_decoder
                 // ADDMUL has format dependent latency
                 ADDMUL : begin
                   unique case (fpu_dst_fmt_o)
-                    fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
-                    fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
-                    fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
-                    fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
+                    fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
+                    fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
+                    fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
+                    fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
                     default : ;
                   endcase
                 end
                 // DIVSQRT is iterative and takes more than 2 cycles
-                DIVSQRT : apu_lat_o = 2'h3;
+                DIVSQRT : apu_lat_o = 2'h0;
                 // NONCOMP uses the same latency for all formats
-                NONCOMP : apu_lat_o = (C_LAT_NONCOMP<2) ? C_LAT_NONCOMP+1 : 2'h3;
+                NONCOMP : apu_lat_o = (C_LAT_NONCOMP<3) ? C_LAT_NONCOMP+1 : 2'h0;
                 // CONV uses the same latency for all formats
-                CONV    : apu_lat_o = (C_LAT_CONV<2) ? C_LAT_CONV+1 : 2'h3;
+                CONV    : apu_lat_o = (C_LAT_CONV<3) ? C_LAT_CONV+1 : 2'h0;
               endcase
 
               // Set FPnew OP and OPMOD as the APU op
@@ -1798,20 +1802,20 @@ module riscv_decoder
               // ADDMUL has format dependent latency
               ADDMUL : begin
                 unique case (fpu_dst_fmt_o)
-                  fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
-                  fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<2)    ? C_LAT_FP64+1    : 2'h3;
-                  fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
-                  fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
-                  fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
+                  fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
+                  fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<3)    ? C_LAT_FP64+1    : 2'h0;
+                  fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
+                  fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
+                  fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
                   default : ;
                 endcase
               end
               // DIVSQRT is iterative and takes more than 2 cycles
-              DIVSQRT : apu_lat_o = 2'h3;
+              DIVSQRT : apu_lat_o = 2'h0;
               // NONCOMP uses the same latency for all formats
-              NONCOMP : apu_lat_o = (C_LAT_NONCOMP<2) ? C_LAT_NONCOMP+1 : 2'h3;
+              NONCOMP : apu_lat_o = (C_LAT_NONCOMP<3) ? C_LAT_NONCOMP+1 : 2'h0;
               // CONV uses the same latency for all formats
-              CONV    : apu_lat_o = (C_LAT_CONV<2) ? C_LAT_CONV+1 : 2'h3;
+              CONV    : apu_lat_o = (C_LAT_CONV<3) ? C_LAT_CONV+1 : 2'h0;
             endcase
           end
 
@@ -1909,11 +1913,11 @@ module riscv_decoder
           if (SHARED_FP!=1) begin
             // format dependent latency
             unique case (fpu_dst_fmt_o)
-              fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
-              fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<2)    ? C_LAT_FP64+1    : 2'h3;
-              fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
-              fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
-              fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
+              fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
+              fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<3)    ? C_LAT_FP64+1    : 2'h0;
+              fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
+              fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
+              fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
               default : ;
             endcase
           end

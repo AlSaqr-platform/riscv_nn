@@ -685,6 +685,7 @@ module riscv_core
     .mult_is_clpx_ex_o            ( mult_is_clpx_ex      ), // from ID to EX stage
     .mult_clpx_shift_ex_o         ( mult_clpx_shift_ex   ), // from ID to EX stage
     .mult_clpx_img_ex_o           ( mult_clpx_img_ex     ), // from ID to EX stage
+    .dot_spr_operand_ex_o         ( dot_spr_operand_ex   ),
 
     // FPU
     .frm_i                        ( frm_csr                 ),
@@ -865,6 +866,7 @@ module riscv_core
     .mult_is_clpx_i             ( mult_is_clpx_ex              ), // from ID/EX pipe registers
     .mult_clpx_shift_i          ( mult_clpx_shift_ex           ), // from ID/EX pipe registers
     .mult_clpx_img_i            ( mult_clpx_img_ex             ), // from ID/EX pipe registers
+    .dot_spr_operand_i          ( dot_spr_operand_ex           ),
 
     .mult_multicycle_o          ( mult_multicycle              ), // to ID/EX pipe registers
     .current_cycle_i            ( current_cycle_csr            ), // added for ivec sb : Current cycle for mixed preision
