@@ -54,6 +54,11 @@ module riscv_load_store_unit
     input  logic [31:0]  operand_b_ex_i,       // operand b from RF for address     -> from ex stage
     input  logic         addr_useincr_ex_i,    // use a + b or just a for address   -> from ex stage
 
+    input  logic         update_a_ex_i,
+    input  logic         update_w_ex_i,
+    input  logic         dot_spr_operand_ex_i, // added for status-based M&L, asserted when there is
+                                               // a M&L instruction in the EX stage     
+
     input  logic         data_misaligned_ex_i, // misaligned access in last ld/st   -> from ID/EX pipeline
     output logic         data_misaligned_o,    // misaligned access was detected    -> to controller
 
@@ -62,7 +67,12 @@ module riscv_load_store_unit
     output logic         lsu_ready_wb_o, // LSU ready for new data in WB stage
 
     input  logic         ex_valid_i,
-    output logic         busy_o
+    output logic         busy_o,
+
+    // signals from CSR
+    input  logic         sb_legacy_ex_i, // need to come from ID/EX pipe?
+    input  logic [31:0]  a_addr_i,       // activation address to be accessed, coming from the CSR
+    input  logic [31:0]  w_addr_i        // weight address to be accessed, coming from the CSR
 );
 
   logic [31:0]  data_addr_int;
@@ -477,7 +487,20 @@ module riscv_load_store_unit
   end
 
   // generate address from operands
-  assign data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
+  always_comb begin
+    if(sb_legacy_ex_i)
+     data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
+    else if(dot_spr_operand_ex_i) begin
+      if(update_a_ex_i && update_w_ex_i)
+        data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
+      else if(update_a_ex_i)
+        data_addr_int = a_addr_i;
+      else if(update_w_ex_i)
+        data_addr_int = w_addr_i;
+      else
+        data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
+    end
+  end
 
   assign busy_o = (CS == WAIT_RVALID) || (CS == WAIT_RVALID_EX_STALL) || (CS == IDLE_EX_STALL) || (data_req_o == 1'b1);
 

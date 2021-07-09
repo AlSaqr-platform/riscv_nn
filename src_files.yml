@@ -48,6 +48,7 @@ riscv:
     ./rtl/riscv_L0_buffer.sv,
     ./rtl/riscv_pmp.sv,
     ./rtl/mixed_precision_controller.sv,
+    ./rtl/macload_controller.sv,
   ]
 riscv_vip_rtl:
   targets: [

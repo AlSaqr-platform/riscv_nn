@@ -280,6 +280,15 @@ module riscv_core
   logic [31:0] csr_wdata;
   PrivLvl_t    current_priv_lvl;
 
+  // CSR additional signal for status-based MACLOAD
+  logic        csr_macl_op;
+  logic [11:0] csr_macl_addr;
+  logic [31:0] csr_macl_wdata;
+  logic [31:0] a_address, w_address;
+  logic [31:0] a_stride, w_stride;
+  logic [31:0] a_rollback, w_rollback;
+  logic [31:0] a_skip, w_skip;
+
   // Data Memory Control:  From ID stage (id-ex pipe) <--> load store unit
   logic        data_we_ex;
   logic [1:0]  data_type_ex;
@@ -992,6 +1001,10 @@ module riscv_core
     .operand_b_ex_i        ( alu_operand_b_ex   ),
     .addr_useincr_ex_i     ( useincr_addr_ex    ),
 
+    .update_a_ex_i         ( lsu_tospra_ex[0]   ),
+    .update_w_ex_i         ( lsu_tosprw_ex[0]   ),
+    .dot_spr_operand_ex_i  (dot_spr_operand_ex_o),
+
     .data_misaligned_ex_i  ( data_misaligned_ex ), // from ID/EX pipeline
     .data_misaligned_o     ( data_misaligned    ),
 
@@ -1000,10 +1013,45 @@ module riscv_core
     .lsu_ready_wb_o        ( lsu_ready_wb       ),
 
     .ex_valid_i            ( ex_valid           ),
-    .busy_o                ( lsu_busy           )
+    .busy_o                ( lsu_busy           ),
+
+    // signals form CSR
+    .sb_legacy_ex_i        ( sb_legacy_mode     ),
+    .a_addr_i              ( a_address          ),
+    .w_addr_i              ( w_address          )
   );
 
   assign wb_valid = lsu_ready_wb & apu_ready_wb;
+
+
+  //////////////////////////////////////
+  //       __      __     _           //
+  //      |  \    /  |   | |          //
+  //      |   \  /   |   | |          //
+  //      | |\ \/ /| | & | |___       //
+  //      | | \  / | |   |_____|      //
+  //                                  //
+  //            Controller            //
+  //////////////////////////////////////
+
+  macload_controller macl_control_i
+    (
+      .clk_i              ( clk              ),
+      .rstn_i             ( rst_ni           ),
+      .update_a_i         ( lsu_tospra_ex[0] ),
+      .update_w_i         ( lsu_tosprw_ex[0] ),
+      .a_address_i        ( a_address        ),
+      .w_address_i        ( w_address        ),
+      .a_stride_i         ( a_stride         ),
+      .w_stride_i         ( w_stride         ),
+      .a_rollback_i       ( a_rollback       ),
+      .w_rollback_i       ( w_rollback       ),
+      .a_skip_i           ( a_skip           ),
+      .w_skip_i           ( w_skip           ),
+      .updated_address_o  ( csr_macl_wdata   ),
+      .csr_op_o           ( csr_macl_op      ),
+      .csr_address_o      ( csr_macl_addr    )
+    );
 
 
   //////////////////////////////////////
@@ -1044,6 +1092,11 @@ module riscv_core
     .csr_op_i                ( csr_op             ),
     .csr_rdata_o             ( csr_rdata          ),
 
+    // Additional write interface to a/w address registers
+    .csr_macl_addr_i         ( csr_macl_addr      ), //from macload_controller
+    .csr_macl_wdata_i        ( csr_macl_wdata     ), //from macload_controller
+    .csr_macl_op_i           ( csr_macl_op        ), //from macload controller
+
     .fpu_dst_fmt_o           ( fpu_dst_fmt_csr    ),  //Aggiunta sb fpu: Mi serve portarlo in ingresso all'id_stage
     .fpu_src_fmt_o           ( fpu_src_fmt_csr    ),  //Aggiunta sb fpu: Lo porto in ingresso all'id_stage
     .fpu_int_fmt_o           ( fpu_int_fmt_csr    ),  //Aggiunta sb fpu: Sempre all'ingresso dell'id_stage
@@ -1051,6 +1104,15 @@ module riscv_core
     .ivec_mixed_cycle_o      ( current_cycle_csr  ),  //Added for ivec sb : Cycles counter for mixed precion operations
     .ivec_skip_size_o        ( skip_size_csr      ),  //Added for ivec sb : Used by mpc to know when to increase next_cycle
     .sb_legacy_o             ( sb_legacy_mode     ),
+
+    .macl_a_address_o        ( a_address          ), //to macload controller and LSU
+    .macl_w_address_o        ( w_address          ), //to macload controller and LSU
+    .macl_a_stride_o         ( a_stride           ), //to macload controller
+    .macl_w_stride_o         ( w_stride           ), //to macload controller
+    .macl_a_rollback_o       ( a_rollback         ), //to macload controller
+    .macl_w_rollback_o       ( w_rollback         ), //to macload controller
+    .macl_a_skip_o           ( a_skip             ), //to macload controller
+    .macl_w_skip_o           ( w_skip             ), //to macload controller
    
     .frm_o                   ( frm_csr            ),
     .fprec_o                 ( fprec_csr          ),
