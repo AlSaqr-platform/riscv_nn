@@ -270,7 +270,7 @@ module riscv_cs_registers
   logic [C_PC-1:0]     fprec_q, fprec_n;
 
   logic csr_macl_we_int;
-  logic [31.0] csr_macl_wdata_int;
+  logic [31:0] csr_macl_wdata_int;
 
   logic [C_FPNEW_FMTBITS-1:0] fpu_dst_fmt_q, fpu_dst_fmt_n, fpu_src_fmt_q, fpu_src_fmt_n; //aggiunta fpu_status_based
   logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_q, fpu_int_fmt_n; //aggiunta sb fpu
@@ -1214,7 +1214,7 @@ end //PULP_SECURE
 
     unique case (csr_macl_op_i)
     CSR_OP_WRITE: csr_macl_wdata_int = csr_macl_wdata_i;
-    CSR_OP_SET:   csr_macl_wdata_int = csr_macl_wdata_i ! csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
+    CSR_OP_SET:   csr_macl_wdata_int = csr_macl_wdata_i | csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
     CSR_OP_CLEAR: csr_macl_wdata_int = (~csr_macl_wdata_i) & csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
     CSR_OP_NONE: begin
       csr_macl_wdata_int = csr_macl_wdata_i;
