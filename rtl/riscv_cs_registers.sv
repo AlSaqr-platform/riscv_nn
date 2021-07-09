@@ -67,6 +67,10 @@ module riscv_cs_registers
   input logic [1:0]                       csr_op_i,
   output logic [31:0]                     csr_rdata_o,
 
+  // Additional write port used to write MACLOAD signals together with mixed-precision one when we're executing mixed-precision MACLOADs
+  input logic [11:0]                      csr_macl_addr_i,
+  input logic [31:0]                      csr_macl_wdata_i,
+  input logic [1:0]                       csr_macl_op_i,
 
   output logic [C_FPNEW_FMTBITS-1:0]      fpu_dst_fmt_o, //aggiunta sb fpu
   output logic [C_FPNEW_FMTBITS-1:0]      fpu_src_fmt_o, //aggiunta sb fpu
@@ -75,6 +79,15 @@ module riscv_cs_registers
   output logic [NBITS_MIXED_CYCLES-1:0]   ivec_mixed_cycle_o, //added for sb ivec : output of counter of number of cycles for mixed precision operations
   output logic [NBITS_MAX_KER-1:0]        ivec_skip_size_o, //added for sb ivec : used by mpc to know when to increase next cycle
   output logic                            sb_legacy_o,      //added for sb : Legacy Mode
+
+  output logic [31:0]                     macl_a_address_o,  //added for status-based MACLOAD: current activation address
+  output logic [31:0]                     macl_w_address_o,  //added for status-based MACLOAD: curent weight address
+  output logic [31:0]                     macl_a_stride_o,   //added for status-based MACLOAD: regular activation increment  
+  output logic [31:0]                     macl_w_stride_o,   //added for status-based MACLOAD: regular weight increment
+  output logic [31:0]                     macl_a_rollback_o, //added for status-based MACLOAD: rollback activation increment
+  output logic [31:0]                     macl_w_rollback_o, //added for status-based MACLOAD: rollback weight increment
+  output logic [31:0]                     macl_a_skip_o,     //added for status-based MACLOAD: number of activation updates before rollback
+  output logic [31:0]                     macl_w_skip_o,     //added for status-based MACLOAD: number of weight update before rollback
 
   output logic [2:0]                      frm_o,
   output logic [C_PC-1:0]                 fprec_o,
@@ -256,13 +269,24 @@ module riscv_cs_registers
   logic [C_FFLAG-1:0]  fflags_q, fflags_n;
   logic [C_PC-1:0]     fprec_q, fprec_n;
 
+  logic csr_macl_we_int;
+  logic [31.0] csr_macl_wdata_int;
+
   logic [C_FPNEW_FMTBITS-1:0] fpu_dst_fmt_q, fpu_dst_fmt_n, fpu_src_fmt_q, fpu_src_fmt_n; //aggiunta fpu_status_based
   logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_q, fpu_int_fmt_n; //aggiunta sb fpu
   ivec_mode_fmt                         ivec_fmt_q, ivec_fmt_n; //Added for sb ivec : needed for csr update logic
   logic [NBITS_MIXED_CYCLES-1:0] ivec_mixed_cycle_q, ivec_mixed_cycle_n; //Added for sb ivec: counters for mixed precision operation
   logic [NBITS_MAX_KER-1 : 0]    ivec_skip_size_q, ivec_skip_size_n; //added for sb ivec
   logic                          sb_legacy_q, sb_legacy_n; // Added for sb: Legacy MODE
-  
+
+  logic [31:0] macl_a_address_q, macl_a_address_n; //added for status-based MACLOAD
+  logic [31:0] macl_w_address_q, macl_w_address_n; //added for status-based MACLOAD
+  logic [31:0] macl_a_stride_q, macl_a_stride_n;   //added for status-based MACLOAD
+  logic [31:0] macl_w_stride_q, macl_w_stride_n;   //added for status-based MACLOAD
+  logic [31:0] macl_a_rollback_q, macl_a_rollback_n; //added for status-based MACLOAD
+  logic [31:0] macl_w_rollback_q, macl_w_rollback_n; //added for status-based MACLOAD
+  logic [31:0] macl_a_skip_q, macl_a_skip_n;       //added for status-based MACLOAD
+  logic [31:0] macl_w_skip_q, macl_w_skip_n;       //added for status-based MACLOAD
 
 
   // Interrupt control signals
@@ -358,6 +382,25 @@ if(PULP_SECURE==1) begin
       /************************ LEGACY STATSU BASED MODE ********************************************************/
 
       12'h010: csr_rdata_int = { {(31){1'b0}}, sb_legacy_q};
+
+      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
+      * 0x100 : current activation address
+      * 0x101 : current weight address
+      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
+      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
+      * 0x104 : activation rollback increment, -3*s_a+4 for example
+      * 0x105 : weight rollback increment, -3*s_w+4 for example
+      * 0x106 : number of regular activation updates before rollback
+      * 0x107 : number of regular weight updates before rollback
+      ***********************************************************************************************************/
+      12'h100: csr_rdata_int = macl_a_address_q;
+      12'h101: csr_rdata_int = macl_w_address_q;
+      12'h102: csr_rdata_int = macl_a_stride_q;
+      12'h103: csr_rdata_int = macl_w_stride_q;
+      12'h104: csr_rdata_int = macl_a_rollback_q;
+      12'h105: csr_rdata_int = macl_w_rollback_q;
+      12'h106: csr_rdata_int = macl_a_skip_q;
+      12'h107: csr_rdata_int = macl_w_skip_q;
       
       
       // mstatus
@@ -473,6 +516,25 @@ end else begin //PULP_SECURE == 0
       /************************ LEGACY STATSU BASED MODE ********************************************************/      
       12'h010: csr_rdata_int = { {(31){1'b0}}, sb_legacy_q};
 
+      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
+      * 0x100 : current activation address
+      * 0x101 : current weight address
+      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
+      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
+      * 0x104 : activation rollback increment, -3*s_a+4 for example
+      * 0x105 : weight rollback increment, -3*s_w+4 for example
+      * 0x106 : number of regular activation updates before rollback
+      * 0x107 : number of regular weight updates before rollback
+      ***********************************************************************************************************/
+      12'h100: csr_rdata_int = macl_a_address_q;
+      12'h101: csr_rdata_int = macl_w_address_q;
+      12'h102: csr_rdata_int = macl_a_stride_q;
+      12'h103: csr_rdata_int = macl_w_stride_q;
+      12'h104: csr_rdata_int = macl_a_rollback_q;
+      12'h105: csr_rdata_int = macl_w_rollback_q;
+      12'h106: csr_rdata_int = macl_a_skip_q;
+      12'h107: csr_rdata_int = macl_w_skip_q;
+
       // mstatus: always M-mode, contains IE bit
       12'h300: csr_rdata_int = {
                                   14'b0,
@@ -542,8 +604,16 @@ if(PULP_SECURE==1) begin
     ivec_fmt_n               = ivec_fmt_q;         //added ivec sb
     ivec_mixed_cycle_n       = ivec_mixed_cycle_q; //added for ivec sb
     ivec_skip_size_n         = ivec_skip_size_q;   //added for ivec sb
-    sb_legacy_n              = sb_legacy_q;        //Added for ivec sb 
+    sb_legacy_n              = sb_legacy_q;        //Added for ivec sb
 
+    macl_a_address_n         = macl_a_address_q;   //added for status based MACLOAD
+    macl_w_address_n         = macl_w_address_q;   //added for status based MACLOAD
+    macl_a_stride_n          = macl_a_stride_q;    //added for status based MACLOAD
+    macl_w_stride_n          = macl_w_stride_q;    //added for status based MACLOAD
+    macl_a_rollback_n        = macl_a_rollback_q;  //added for status based MACLOAD
+    macl_w_rollback_n        = macl_w_rollback_q;  //added for status based MACLOAD
+    macl_a_skip_n            = macl_a_skip_q;      //added for status based MACLOAD
+    macl_w_skip_n            = macl_w_skip_q;      //added for status based MACLOAD
 
     mscratch_n               = mscratch_q;
     mepc_n                   = mepc_q;
@@ -617,6 +687,31 @@ if(PULP_SECURE==1) begin
       /************************ LEGACY STATSU BASED MODE ********************************************************/      
       
       12'h010: if (csr_we_int) sb_legacy_n = csr_wdata_int[0];
+
+      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
+      * 0x100 : current activation address
+      * 0x101 : current weight address
+      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
+      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
+      * 0x104 : activation rollback increment, -3*s_a+4 for example
+      * 0x105 : weight rollback increment, -3*s_w+4 for example
+      * 0x106 : number of regular activation updates before rollback
+      * 0x107 : number of regular weight updates before rollback
+      ***********************************************************************************************************/
+      12'h100: begin
+        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
+        else if(csr_we_int) macl_a_address_n = csr_wdata_int;
+      end
+      12'h101: begin
+        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
+        else if(csr_we_int) macl_w_address_n = csr_wdata_int;
+      end
+      12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
+      12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
+      12'h104: if(csr_we_int) macl_a_rollback_n = csr_wdata_int;
+      12'h105: if(csr_we_int) macl_w_rollback_n = csr_wdata_int;
+      12'h106: if(csr_we_int) macl_a_skip_n = csr_wdata_int;
+      12'h107: if(csr_we_int) macl_w_skip_n = csr_wdata_int;
 
       // mstatus: IE bit
       12'h300: if (csr_we_int) begin
@@ -714,6 +809,18 @@ if(PULP_SECURE==1) begin
       end
       // ucause: exception cause
       12'h042: if (csr_we_int) ucause_n = {csr_wdata_int[31], csr_wdata_int[4:0]};
+    endcase
+
+    case (csr_macl_addr_i)
+      12'h100: begin
+        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h100)) macl_a_address_n = '0;
+        else if(csr_macl_we_int) macl_a_address_n = csr_macl_wdata_int;
+      end
+      12'h101: begin
+        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h101)) macl_w_address_n = '0;
+        else if(csr_macl_we_int) macl_w_address_n = csr_macl_wdata_int;
+      end
+      default : ;
     endcase
 
     // exception controller gets priority over other writes
@@ -850,7 +957,16 @@ end else begin //PULP_SECURE == 0
     ivec_fmt_n               = ivec_fmt_q; //added for ivec sb
     ivec_mixed_cycle_n       = ivec_mixed_cycle_q; //added for ivec sb
     ivec_skip_size_n         = ivec_skip_size_q;   //added for ivec sb     
-    sb_legacy_n              = sb_legacy_q;        //added for sb    
+    sb_legacy_n              = sb_legacy_q;        //added for sb
+
+    macl_a_address_n         = macl_a_address_q;   //added for status based MACLOAD
+    macl_w_address_n         = macl_w_address_q;   //added for status based MACLOAD
+    macl_a_stride_n          = macl_a_stride_q;    //added for status based MACLOAD
+    macl_w_stride_n          = macl_w_stride_q;    //added for status based MACLOAD
+    macl_a_rollback_n        = macl_a_rollback_q;  //added for status based MACLOAD
+    macl_w_rollback_n        = macl_w_rollback_q;  //added for status based MACLOAD
+    macl_a_skip_n            = macl_a_skip_q;      //added for status based MACLOAD
+    macl_w_skip_n            = macl_w_skip_q;      //added for status based MACLOAD
 
     mscratch_n               = mscratch_q;
     mepc_n                   = mepc_q;
@@ -922,6 +1038,30 @@ end else begin //PULP_SECURE == 0
       
       12'h010: if (csr_we_int) sb_legacy_n = csr_wdata_int[0];
       
+      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
+      * 0x100 : current activation address
+      * 0x101 : current weight address
+      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
+      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
+      * 0x104 : activation rollback increment, -3*s_a+4 for example
+      * 0x105 : weight rollback increment, -3*s_w+4 for example
+      * 0x106 : number of regular activation updates before rollback
+      * 0x107 : number of regular weight updates before rollback
+      ***********************************************************************************************************/
+      12'h100: begin
+        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
+        else if(csr_we_int) macl_a_address_n = csr_wdata_int;
+      end
+      12'h101: begin
+        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
+        else if(csr_we_int) macl_w_address_n = csr_wdata_int;
+      end
+      12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
+      12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
+      12'h104: if(csr_we_int) macl_a_rollback_n = csr_wdata_int;
+      12'h105: if(csr_we_int) macl_w_rollback_n = csr_wdata_int;
+      12'h106: if(csr_we_int) macl_a_skip_n = csr_wdata_int;
+      12'h107: if(csr_we_int) macl_w_skip_n = csr_wdata_int;
       
       // mstatus: IE bit
       12'h300: if (csr_we_int) begin
@@ -984,6 +1124,18 @@ end else begin //PULP_SECURE == 0
       HWLoop1_START: if (csr_we_int) begin hwlp_we_o = 3'b001; hwlp_regid_o = 1'b1; end
       HWLoop1_END: if (csr_we_int) begin hwlp_we_o = 3'b010; hwlp_regid_o = 1'b1; end
       HWLoop1_COUNTER: if (csr_we_int) begin hwlp_we_o = 3'b100; hwlp_regid_o = 1'b1; end
+    endcase
+
+    case (csr_macl_addr_i)
+      12'h100: begin
+        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h100)) macl_a_address_n = '0;
+        else if(csr_macl_we_int) macl_a_address_n = csr_macl_wdata_int;
+      end
+      12'h101: begin
+        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h101)) macl_w_address_n = '0;
+        else if(csr_macl_we_int) macl_w_address_n = csr_macl_wdata_int;
+      end
+      default : ;
     endcase
 
     // exception controller gets priority over other writes
@@ -1051,6 +1203,24 @@ end //PULP_SECURE
       end
 
       default:;
+    endcase
+  end
+
+  // CSR operation logic for MACLOAD registers
+  always_comb
+  begin
+    csr_macl_wdata_int = csr_macl_wdata_i;
+    csr_macl_we_int    = 1'b1;
+
+    unique case (csr_macl_op_i)
+    CSR_OP_WRITE: csr_macl_wdata_int = csr_macl_wdata_i;
+    CSR_OP_SET:   csr_macl_wdata_int = csr_macl_wdata_i ! csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
+    CSR_OP_CLEAR: csr_macl_wdata_int = (~csr_macl_wdata_i) & csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
+    CSR_OP_NONE: begin
+      csr_macl_wdata_int = csr_macl_wdata_i;
+      csr_macl_we_int    = 1'b0;
+    end
+      default : /* default */;
     endcase
   end
 

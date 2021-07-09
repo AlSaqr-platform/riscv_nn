@@ -263,6 +263,9 @@ parameter CSR_OP_WRITE = 2'b01;
 parameter CSR_OP_SET   = 2'b10;
 parameter CSR_OP_CLEAR = 2'b11;
 
+// CSR addresses for activations and weights used in status-based MACLOAD
+parameter CSR_A_ADDR = 12'h100;
+parameter CSR_W_ADDR = 12'h101;
 
 // SPR for debugger, not accessible by CPU
 parameter SP_DVR0       = 16'h3000;

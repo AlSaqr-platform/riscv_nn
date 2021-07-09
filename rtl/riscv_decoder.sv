@@ -243,8 +243,9 @@ module riscv_decoder
     alu_op_b_mux_sel_o          = OP_B_REGB_OR_FWD;
     alu_op_c_mux_sel_o          = OP_C_REGC_OR_FWD;
 
-    if (!sb_legacy_i) begin     // Added for sb : LEGACY MODE 
-      alu_vec_mode_o            = (instr_rdata_i[6:0] == OPCODE_VECOP) ? ivec_fmt_i : VEC_MODE32; //Modified for ivec sb : Now the default value will be select via cs reg      
+    if (!sb_legacy_i) begin     // Added for sb : LEGACY MODE
+      //Modified for ivec sb and status-based MACLOADL: Now the default value will be select via cs reg
+      alu_vec_mode_o            = ((instr_rdata_i[6:0] == OPCODE_VECOP) || (instr_rdata_i[6:0] == OPCODE_MAC_LOAD)) ? ivec_fmt_i : VEC_MODE32;
     end
     else begin
       alu_vec_mode_o            = VEC_MODE32;      
