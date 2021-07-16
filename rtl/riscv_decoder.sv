@@ -565,15 +565,25 @@ module riscv_decoder
         else if (instr_rdata_i[24] ) begin
           lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b1};
           lsu_tospra_o          = { instr_rdata_i[20], 1'b0};
-          alu_en_o                = 1'b1; // ALU for lwincrement part
-          regfile_alu_we          = 1'b1;
+          if(sb_legacy_i) begin
+            alu_en_o              = 1'b1; // ALU for lwincrement part
+            regfile_alu_we        = 1'b1;
+          end else begin
+            alu_en_o              = 1'b0; // update of the address is made by the M&L controller
+            regfile_alu_we        = 1'b1; // address is written into the CSR
+          end
           data_req                = 1'b1;    // date req enabled for load part
           data_type_o             = 2'b00;   // probably WORD
         end else if (instr_rdata_i[23]) begin
           lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b0};
           lsu_tospra_o          = { instr_rdata_i[20], 1'b1};
-          alu_en_o                = 1'b1; // ALU for lwincrement part
-          regfile_alu_we          = 1'b1;
+          if(sb_legacy_i) begin
+            alu_en_o              = 1'b1; // ALU for lwincrement part
+            regfile_alu_we        = 1'b1;
+          end else begin
+            alu_en_o              = 1'b0; // update of the address is made by the M&L controller
+            regfile_alu_we        = 1'b1; // address is written into the CSR
+          end
           data_req                = 1'b1;    // date req enabled for load part
           data_type_o             = 2'b00;   // probably WORD
         end else begin
@@ -632,23 +642,33 @@ module riscv_decoder
         endcase
 
 
-        case (instr_rdata_i[14:12])
-        3'b000: begin // 16-b precision
-          mult_operator_o         = MUL_DOT16; // set for 16-bit SIMD sum-dot-product
+        if(sb_legacy_i) begin
+          case (instr_rdata_i[14:12])
+          3'b000: begin // 16-b precision
+            mult_operator_o         = MUL_DOT16; // set for 16-bit SIMD sum-dot-product
+            end
+          3'b001: begin // 8-bit precision
+            mult_operator_o         = MUL_DOT8; // set for 8-bit SIMD sum-dot-product
+            end
+          3'b010: begin
+            mult_operator_o         = MUL_DOT4;
+            end
+          3'b011: begin
+            mult_operator_o         = MUL_DOT2;
           end
-        3'b001: begin // 8-bit precision
-          mult_operator_o         = MUL_DOT8; // set for 8-bit SIMD sum-dot-product
-          end
-        3'b010: begin
-          mult_operator_o         = MUL_DOT4;
-          end
-        3'b011: begin
-          mult_operator_o         = MUL_DOT2;
+          default: begin //default condition
+            illegal_insn_o          = 1'b1;
+            end
+          endcase
+        end else begin
+          case (ivec_fmt_i)
+            VEC_MODE16: mult_operator_o = MUL_DOT16;
+            VEC_MODE8 : mult_operator_o = MUL_DOT8;
+            VEC_MODE4 : mult_operator_o = MUL_DOT4;
+            VEC_MODE2 : mult_operator_o = MUL_DOT2;
+            default   : illegal_insn_o  = 1'b1;
+          endcase
         end
-        default: begin //default condition
-          illegal_insn_o          = 1'b1;
-          end
-        endcase
 
       end  
 

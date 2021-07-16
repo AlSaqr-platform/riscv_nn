@@ -238,6 +238,8 @@ module riscv_id_stage
     output logic [2:0]                     lsu_tosprw_ex_o,
     output logic [1:0]                     lsu_tospra_ex_o,
     input logic                            loadComputeVLIW_ex_i,
+    output logic                           update_w_id_o, //added for status-based MACLOAD
+    output logic                           update_a_id_o, //added for status-based MACLOAD
 
     // Interrupt signals
     input logic                            irq_i,
@@ -383,6 +385,7 @@ module riscv_id_stage
   logic [1:0]  mult_signed_mode; // Signed mode multiplication at the output of the controller, and before the pipe registers
   logic        mult_dot_en;      // use dot product
   logic [1:0]  mult_dot_signed;  // Signed mode dot products (can be mixed types)
+  logic        dot_spr_operand;
 
   // FPU signals
   logic [C_FPNEW_FMTBITS-1:0]  fpu_dst_fmt;
@@ -598,6 +601,10 @@ module riscv_id_stage
 
 
   assign mult_en = mult_int_en | mult_dot_en;
+
+  // Forwording 
+  assign update_w_id_o = lsu_tosprw_id[0];
+  assign update_a_id_o = lsu_tospra_id[0];
 
   ///////////////////////////////////////////////
   //  _   ___        ___     ___   ___  ____   //

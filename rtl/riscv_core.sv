@@ -152,6 +152,10 @@ module riscv_core
   logic [2:0]        lsu_tosprw_ex;  //RNN_EXT
   logic [1:0]        lsu_tospra_ex; //RNN_EXT
 
+  logic              dot_spr_operand_ex; // added for status-based MACLOAD
+  logic              update_w_id;
+  logic              update_a_id;
+
   // ID performance counter signals
   logic        is_decoding;
 
@@ -281,13 +285,15 @@ module riscv_core
   PrivLvl_t    current_priv_lvl;
 
   // CSR additional signal for status-based MACLOAD
-  logic        csr_macl_op;
+  logic [1:0]  csr_macl_op;
   logic [11:0] csr_macl_addr;
   logic [31:0] csr_macl_wdata;
   logic [31:0] a_address, w_address;
   logic [31:0] a_stride, w_stride;
   logic [31:0] a_rollback, w_rollback;
   logic [31:0] a_skip, w_skip;
+  logic macl_a_rstn;
+  logic macl_w_rstn;
 
   // Data Memory Control:  From ID stage (id-ex pipe) <--> load store unit
   logic        data_we_ex;
@@ -769,9 +775,11 @@ module riscv_core
     .data_err_i                   ( data_err_pmp         ),
     .data_err_ack_o               ( data_err_ack         ),
 
-    .lsu_tosprw_ex_o              (lsu_tosprw_ex         ), //RNN_EXT
-    .lsu_tospra_ex_o              (lsu_tospra_ex         ), //RNN_EXT
-    .loadComputeVLIW_ex_i         (loadComputeVLIW_ex    ), //RNN_EXT
+    .lsu_tosprw_ex_o              ( lsu_tosprw_ex        ), //RNN_EXT
+    .lsu_tospra_ex_o              ( lsu_tospra_ex        ), //RNN_EXT
+    .loadComputeVLIW_ex_i         ( loadComputeVLIW_ex   ), //RNN_EXT
+    .update_w_id_o                ( update_w_id          ), //added for status-based MACLOAD
+    .update_a_id_o                ( update_a_id          ), //added for status-based MACLOAD
 
     // Interrupt Signals
     .irq_i                        ( irq_i                ), // incoming interrupts
@@ -1003,7 +1011,7 @@ module riscv_core
 
     .update_a_ex_i         ( lsu_tospra_ex[0]   ),
     .update_w_ex_i         ( lsu_tosprw_ex[0]   ),
-    .dot_spr_operand_ex_i  (dot_spr_operand_ex_o),
+    .dot_spr_operand_ex_i  ( dot_spr_operand_ex ),
 
     .data_misaligned_ex_i  ( data_misaligned_ex ), // from ID/EX pipeline
     .data_misaligned_o     ( data_misaligned    ),
@@ -1015,7 +1023,7 @@ module riscv_core
     .ex_valid_i            ( ex_valid           ),
     .busy_o                ( lsu_busy           ),
 
-    // signals form CSR
+    // signals from CSR
     .sb_legacy_ex_i        ( sb_legacy_mode     ),
     .a_addr_i              ( a_address          ),
     .w_addr_i              ( w_address          )
@@ -1040,6 +1048,9 @@ module riscv_core
       .rstn_i             ( rst_ni           ),
       .update_a_i         ( lsu_tospra_ex[0] ),
       .update_w_i         ( lsu_tosprw_ex[0] ),
+      .ex_valid_i         ( ex_valid         ),
+      .csr_a_rstn_i       ( macl_a_rstn      ),
+      .csr_w_rstn_i       ( macl_w_rstn      ),
       .a_address_i        ( a_address        ),
       .w_address_i        ( w_address        ),
       .a_stride_i         ( a_stride         ),
@@ -1113,6 +1124,8 @@ module riscv_core
     .macl_w_rollback_o       ( w_rollback         ), //to macload controller
     .macl_a_skip_o           ( a_skip             ), //to macload controller
     .macl_w_skip_o           ( w_skip             ), //to macload controller
+    .macl_a_rstn_o           ( macl_a_rstn        ), //to macload controller
+    .macl_w_rstn_o           ( macl_w_rstn        ), //to macload controller
    
     .frm_o                   ( frm_csr            ),
     .fprec_o                 ( fprec_csr          ),

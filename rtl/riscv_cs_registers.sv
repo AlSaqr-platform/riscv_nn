@@ -88,6 +88,8 @@ module riscv_cs_registers
   output logic [31:0]                     macl_w_rollback_o, //added for status-based MACLOAD: rollback weight increment
   output logic [31:0]                     macl_a_skip_o,     //added for status-based MACLOAD: number of activation updates before rollback
   output logic [31:0]                     macl_w_skip_o,     //added for status-based MACLOAD: number of weight update before rollback
+  output logic                            macl_a_rstn_o,     //added for status based MACLOAD: signal needed to reset counter when a_address is updated by the C code
+  output logic                            macl_w_rstn_o,     //added for status based MACLOAD: signal needed to reset counter when a_address is updated by the C code 
 
   output logic [2:0]                      frm_o,
   output logic [C_PC-1:0]                 fprec_o,
@@ -637,6 +639,9 @@ if(PULP_SECURE==1) begin
     pmpaddr_we               = '0;
     pmpcfg_we                = '0;
 
+    macl_a_rstn_o            = 1'b1;
+    macl_w_rstn_o            = 1'b1;
+
     if (FPU == 1) if (fflags_we_i) fflags_n = fflags_i | fflags_q;
 
     casex (csr_addr_i)
@@ -700,11 +705,17 @@ if(PULP_SECURE==1) begin
       ***********************************************************************************************************/
       12'h100: begin
         if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_we_int) macl_a_address_n = csr_wdata_int;
+        else if(csr_we_int) begin
+          macl_a_address_n = csr_wdata_int;
+          macl_a_rstn_o = 1'b0;
+        end
       end
       12'h101: begin
         if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_we_int) macl_w_address_n = csr_wdata_int;
+        else if(csr_we_int) begin
+          macl_w_address_n = csr_wdata_int;
+          macl_w_rstn_o = 1'b0;
+        end
       end
       12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
       12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
@@ -987,6 +998,9 @@ end else begin //PULP_SECURE == 0
     pmpaddr_we               = '0;
     pmpcfg_we                = '0;
 
+    macl_a_rstn_o            = 1'b1;
+    macl_w_rstn_o            = 1'b1;
+
 
     if (FPU == 1) if (fflags_we_i) fflags_n = fflags_i | fflags_q;
 
@@ -1050,11 +1064,17 @@ end else begin //PULP_SECURE == 0
       ***********************************************************************************************************/
       12'h100: begin
         if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_we_int) macl_a_address_n = csr_wdata_int;
+        else if(csr_we_int) begin
+          macl_a_address_n = csr_wdata_int;
+          macl_a_rstn_o = 1'b0;
+        end
       end
       12'h101: begin
         if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_we_int) macl_w_address_n = csr_wdata_int;
+        else if(csr_we_int) begin
+          macl_w_address_n = csr_wdata_int;
+          macl_w_rstn_o = 1'b0;
+        end
       end
       12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
       12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
@@ -1251,6 +1271,15 @@ end //PULP_SECURE
   assign ivec_mixed_cycle_o = ivec_mixed_cycle_q; //added for ivec sb : output directly the counter of cycle for ivec sb
   assign ivec_skip_size_o   = ivec_skip_size_q;   //added for ivec sb : output directly the skip size value      
   assign sb_legacy_o = sb_legacy_q; //added for sb : output the legacy mode for status based
+
+  assign macl_a_address_o  = macl_a_address_q;
+  assign macl_w_address_o  = macl_w_address_q;
+  assign macl_a_stride_o   = macl_a_stride_q;
+  assign macl_w_stride_o   = macl_w_stride_q;
+  assign macl_a_rollback_o = macl_a_rollback_q;
+  assign macl_w_rollback_o = macl_w_rollback_q;
+  assign macl_a_skip_o     = macl_a_skip_q;
+  assign macl_w_skip_o     = macl_w_skip_q;
   
 
   assign mtvec_o         = mtvec_q;
@@ -1370,6 +1399,15 @@ end //PULP_SECURE
       ivec_mixed_cycle_q <= '0; //added for ivec sb : reset the cycles counter
       ivec_skip_size_q   <= '0; //added for ivec sb : reset skip size value
       sb_legacy_q        <= '1; //added for sb : Reset Legacy Mode
+
+      macl_a_address_q  <= '0;
+      macl_w_address_q  <= '0;
+      macl_a_stride_q   <= '0;
+      macl_w_stride_q   <= '0;
+      macl_a_rollback_q <= '0;
+      macl_w_rollback_q <= '0;
+      macl_a_skip_q     <= '0;
+      macl_w_skip_q     <= '0;
       
 
     end
@@ -1412,6 +1450,14 @@ end //PULP_SECURE
       ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
       sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
       
+      macl_a_address_q  <= macl_a_address_n;
+      macl_w_address_q  <= macl_w_address_n;
+      macl_a_stride_q   <= macl_a_stride_n;
+      macl_w_stride_q   <= macl_w_stride_n;
+      macl_a_rollback_q <= macl_a_rollback_n;
+      macl_w_rollback_q <= macl_w_rollback_n;
+      macl_a_skip_q     <= macl_a_skip_n;
+      macl_w_skip_q     <= macl_w_skip_n;
 
     end
   end
