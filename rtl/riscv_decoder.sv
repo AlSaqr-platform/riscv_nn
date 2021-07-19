@@ -613,7 +613,7 @@ module riscv_decoder
         alu_operator_o          = ALU_ADD4; // increment size for load part (WORD)
         prepost_useincr_o       = 1'b0; // enable post-access load
         regfile_alu_waddr_sel_o = 1'b0; // alu waddr
-        regfile_mem_we          = 1'b1;   
+        regfile_mem_we          = 1'b1;
 
         //data_sign_extension_o = {1'b0,~instr_rdata_i[14]}; // is this necessary?
 
@@ -662,6 +662,12 @@ module riscv_decoder
           endcase
         end else begin
           case (ivec_fmt_i)
+            MIXED_2x4 : mult_operator_o = MIXED_MUL_2x4;
+            MIXED_2x8 : mult_operator_o = MIXED_MUL_2x8;
+            MIXED_2x16: mult_operator_o = MIXED_MUL_2x16;
+            MIXED_4x8 : mult_operator_o = MIXED_MUL_4x8;
+            MIXED_4x16: mult_operator_o = MIXED_MUL_4x16;
+            MIXED_8x16: mult_operator_o = MIXED_MUL_8x16;
             VEC_MODE16: mult_operator_o = MUL_DOT16;
             VEC_MODE8 : mult_operator_o = MUL_DOT8;
             VEC_MODE4 : mult_operator_o = MUL_DOT4;

@@ -244,7 +244,7 @@ typedef enum logic [1:0] {
                           MPC_MIX_CNTRL   //Use the last value that the Mixed precision controller wrote
                           } mux_sel_mpc;
 //Used by mpc to know after how many macs it should start updating cycles
-localparam int unsigned MAX_KER_SIZE = 9; //The size it's 8 but you need 9 elements to encode it 0 to 8.
+localparam int unsigned MAX_KER_SIZE = 17; //The size it's 8 but you need 9 elements to encode it 0 to 8.
 localparam int unsigned NBITS_MAX_KER = $clog2(MAX_KER_SIZE);
 
   
