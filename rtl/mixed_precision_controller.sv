@@ -29,7 +29,7 @@ module mixed_precision_controller
       if ( (illegal_insn_i == 0) && (is_decoding_i == 1) && (ex_ready_i == 1)) begin //Check for illegal instruction
          //Check if the current instruction is a dotp/sdotp, if so add 1 to the cycle counter
          if ( (instr_rdata_i[6:0] == OPCODE_VECOP)  && (instr_rdata_i[31:26] inside {DOTUP, DOTUSP, DOTSP, SDOTUP, SDOTUSP, SDOTSP}) ||
-              ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (~(instr_rdata_i[11:7] == 5'h00)))) begin
+              ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (instr_rdata_i[11:7] != 5'h00))) begin
             if ( (skip_counter_q+1) < skip_size_i ) begin
                skip_counter_n = skip_counter_q + 1;
             end
@@ -86,7 +86,7 @@ module mixed_precision_controller
         last_ins <= MPC_CSR_WRITE;
       //Check if last instruction was a dotp
       else if ( (instr_rdata_i[6:0] == OPCODE_VECOP) && (instr_rdata_i[31:26] inside {DOTUP, DOTUSP, DOTSP, SDOTUP, SDOTUSP, SDOTSP} ) ||
-                ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (~(instr_rdata_i[11:7] == 5'h00)))) begin
+                ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (instr_rdata_i[11:7] != 5'h00))) begin
          last_ins <= MPC_MIX_CNTRL;
          skip_counter_q <= skip_counter_n;
       end
