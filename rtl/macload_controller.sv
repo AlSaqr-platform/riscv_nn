@@ -32,28 +32,36 @@ assign update_w_int = update_w_i & ex_valid_i;
 assign a_count_n = a_count_q + 32'd1;
 
 always_ff @(posedge clk_i, negedge rstn_i) begin
-	if(~rstn_i | ~csr_a_rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
+	if(~rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
 		a_count_q <= '0;
-	else if((a_count_q == a_skip_i) & update_a_int) // resetting if we reached the number of updates before rollback
-		a_count_q <= '0;
-	else if(update_a_int)
-		a_count_q <= a_count_n;
-	else
-		a_count_q <= a_count_q;
+	else begin
+		if(~csr_a_rstn_i)
+			a_count_q <= '0;
+		else if((a_count_q == a_skip_i) & update_a_int) // resetting if we reached the number of updates before rollback
+			a_count_q <= '0;
+		else if(update_a_int)
+			a_count_q <= a_count_n;
+		else
+			a_count_q <= a_count_q;
+	end
 end
 
 //Weights updates counter
 assign w_count_n = w_count_q + 32'd1;
 
 always_ff @(posedge clk_i, negedge rstn_i) begin
-	if(~rstn_i | ~csr_w_rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
+	if(~rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
 		w_count_q <= '0;
-	else if((w_count_q == w_skip_i) & update_w_int) // resetting if we reached the number of updates before rollback
-		w_count_q <= '0;
-	else if(update_w_int)
-		w_count_q <= w_count_n;
-	else
-		w_count_q <= w_count_q;
+	else begin
+		if(~csr_w_rstn_i)
+			w_count_q <= '0;
+		else if((w_count_q == w_skip_i) & update_w_int) // resetting if we reached the number of updates before rollback
+			w_count_q <= '0;
+		else if(update_w_int)
+			w_count_q <= w_count_n;
+		else
+			w_count_q <= w_count_q;
+	end
 end
 
 //ADDRESS UPDATE LOGIC: the address is incremented by its corresponding stride (s=CH_IN*DIM_KER*DIM_KER for example)
