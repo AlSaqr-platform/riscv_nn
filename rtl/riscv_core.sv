@@ -63,35 +63,37 @@ module riscv_core
 )
 (
   // Clock and Reset
-  input  logic        clk_i,
-  input  logic        rst_ni,
+  input logic                            clk_i,
+  input logic                            rst_ni,
 
-  input  logic        clock_en_i,    // enable clock, otherwise it is gated
-  input  logic        test_en_i,     // enable all clock gates for testing
+  input logic                            clock_en_i, // enable clock, otherwise it is gated
+  input logic                            test_en_i, // enable all clock gates for testing
 
-  input  logic        fregfile_disable_i,  // disable the fp regfile, using int regfile instead
+  input logic                            fregfile_disable_i, // disable the fp regfile, using int regfile instead
 
   // Core ID, Cluster ID and boot address are considered more or less static
-  input  logic [31:0] boot_addr_i,
-  input  logic [ 3:0] core_id_i,
-  input  logic [ 5:0] cluster_id_i,
+  input logic [31:0]                     boot_addr_i,
+  input logic [ 3:0]                     core_id_i,
+  input logic [ 5:0]                     cluster_id_i,
 
   // Instruction memory interface
-  output logic                         instr_req_o,
-  input  logic                         instr_gnt_i,
-  input  logic                         instr_rvalid_i,
-  output logic                  [31:0] instr_addr_o,
-  input  logic [INSTR_RDATA_WIDTH-1:0] instr_rdata_i,
+  output logic                           instr_req_o,
+  input logic                            instr_gnt_i,
+  input logic                            instr_rvalid_i,
+  output logic [31:0]                    instr_addr_o,
+  input logic [INSTR_RDATA_WIDTH-1:0]    instr_rdata_i,
 
   // Data memory interface
-  output logic        data_req_o,
-  input  logic        data_gnt_i,
-  input  logic        data_rvalid_i,
-  output logic        data_we_o,
-  output logic [3:0]  data_be_o,
-  output logic [31:0] data_addr_o,
-  output logic [31:0] data_wdata_o,
-  input  logic [31:0] data_rdata_i,
+  output logic                           data_req_o,
+  input logic                            data_gnt_i,
+  input logic                            data_rvalid_i,
+  output logic                           data_we_o,
+  output logic [3:0]                     data_be_o,
+  output logic [31:0]                    data_addr_o,
+  output logic [31:0]                    data_wdata_o,
+  input logic [31:0]                     data_rdata_i,
+  
+  output logic                           data_unaligned_o, 
 
   // apu-interconnect
   // handshake signals
@@ -109,23 +111,23 @@ module riscv_core
   input logic [APU_NUSFLAGS_CPU-1:0]     apu_master_flags_i,
 
   // Interrupt inputs
-  input  logic        irq_i,                 // level sensitive IR lines
-  input  logic [4:0]  irq_id_i,
-  output logic        irq_ack_o,
-  output logic [4:0]  irq_id_o,
-  input  logic        irq_sec_i,
+  input logic                            irq_i, // level sensitive IR lines
+  input logic [4:0]                      irq_id_i,
+  output logic                           irq_ack_o,
+  output logic [4:0]                     irq_id_o,
+  input logic                            irq_sec_i,
 
-  output logic        sec_lvl_o,
+  output logic                           sec_lvl_o,
 
   // Debug Interface
-  input  logic        debug_req_i,
+  input logic                            debug_req_i,
 
 
   // CPU Control Signals
-  input  logic        fetch_enable_i,
-  output logic        core_busy_o,
+  input logic                            fetch_enable_i,
+  output logic                           core_busy_o,
 
-  input  logic [N_EXT_PERF_COUNTERS-1:0] ext_perf_counters_i
+  input logic [N_EXT_PERF_COUNTERS-1:0]  ext_perf_counters_i
 );
 
   localparam N_HWLP_BITS = $clog2(N_HWLP);
@@ -1031,6 +1033,7 @@ module riscv_core
   );
 
   assign wb_valid = lsu_ready_wb & apu_ready_wb;
+  assign data_unaligned_o = data_misaligned;
 
 
   //////////////////////////////////////
