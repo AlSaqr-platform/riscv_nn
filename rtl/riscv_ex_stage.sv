@@ -286,10 +286,6 @@ module riscv_ex_stage
          wb_contention_lsu = 1'b1;
 //         $error("%t, wb-contention", $time);
       // APU two-cycle operations are written back on LSU port
-      end else if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
-          regfile_we_wb_o    = 1'b1;
-          regfile_waddr_wb_o = apu_waddr;
-          regfile_wdata_wb_o = apu_result;
       end
       if(lsu_tosprw_wb[0] | lsu_tospra_wb[0]) begin// does not work because of latency
           spr_rnn_en = 1'b1;       //spr instead of gpr
@@ -298,7 +294,11 @@ module riscv_ex_stage
           // regfile_we_wb_o = 1'b0;  //spr instead of gpr
           // regfile_waddr_wb_o = regfile_alu_waddr2_wb;
       end
-    end
+    end else if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
+          regfile_we_wb_o    = 1'b1;
+          regfile_waddr_wb_o = apu_waddr;
+          regfile_wdata_wb_o = apu_result;
+      end
     //if(lsu_tosprw_wb[0]) begin
     if (dot_spr_operand_wb) begin
       regfile_waddr_wb_o = regfile_waddr_lsu; 
