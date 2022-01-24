@@ -34,7 +34,11 @@ import riscv_tracer_defines::*;
 `define REG_S4 31:27
 `define REG_D  11:07
 
-module riscv_tracer (
+module riscv_tracer 
+#( 
+   parameter Zfinx
+)
+(
   // Clock and Reset
   input  logic        clk,
   input  logic        rst_n,
@@ -272,6 +276,18 @@ module riscv_tracer (
         str = $sformatf("%-16s f%0d, f%0d, f%0d", mnemonic, rd-32, rs1-32, rs2-32);
       end
     endfunction // printF2Instr
+
+    function void printF2FInstr(input string mnemonic);
+      begin
+        regs_read.push_back('{rs1, rs1_value});
+        regs_write.push_back('{rd, 'x});
+        if(Zfinx == 1'b0) begin
+           str = $sformatf("%-16s f%0d, f%0d", mnemonic, rd, rs1-32);
+        end else begin
+           str = $sformatf("%-16s x%0d, x%0d", mnemonic, rd, rs1-32);
+        end
+      end
+    endfunction  
 
     function void printF2IInstr(input string mnemonic);
       begin
@@ -808,11 +824,11 @@ module riscv_tracer (
     $fclose(f);
   end
 
-  assign rd  = {rd_is_fp,  instr[`REG_D]};
-  assign rs1 = {rs1_is_fp, instr[`REG_S1]};
-  assign rs2 = {rs2_is_fp, instr[`REG_S2]};
-  assign rs3 = {rs3_is_fp, instr[`REG_S3]};
-  assign rs4 = {rs3_is_fp, instr[`REG_S4]};
+  assign rd  = {rd_is_fp && !Zfinx,  instr[`REG_D]};
+  assign rs1 = {rs1_is_fp && !Zfinx, instr[`REG_S1]};
+  assign rs2 = {rs2_is_fp && !Zfinx, instr[`REG_S2]};
+  assign rs3 = {rs3_is_fp && !Zfinx, instr[`REG_S3]};
+  assign rs4 = {rs3_is_fp && !Zfinx, instr[`REG_S4]};
   assign rnn_sr = {instr[26]};
 
   // virtual ID/EX pipeline
@@ -1041,6 +1057,10 @@ module riscv_tracer (
         // FP-OP
         INSTR_FMADD:      trace.printF3Instr("fmadd.s");
         INSTR_FMSUB:      trace.printF3Instr("fmsub.s");
+        INSTR_FMADD_AH:   trace.printF3Instr("fmadd.ah");
+        INSTR_FMADD_H:    trace.printF3Instr("fmadd.h");
+        INSTR_FMSUB_AH:   trace.printF3Instr("fmsub.ah");
+        INSTR_FMSUB_H:    trace.printF3Instr("fmsub.h");
         INSTR_FNMADD:     trace.printF3Instr("fnmadd.s");
         INSTR_FNMSUB:     trace.printF3Instr("fnmsub.s");
         INSTR_FADD:       trace.printF2Instr("fadd.s");
@@ -1053,6 +1073,10 @@ module riscv_tracer (
         INSTR_FSGNJXS:    trace.printF2Instr("fsgnjx.s");
         INSTR_FMIN:       trace.printF2Instr("fmin.s");
         INSTR_FMAX:       trace.printF2Instr("fmax.s");
+        INSTR_FCVTAHS:    trace.printF2FInstr("fcvt.ah.s");
+        INSTR_FCVTHS:     trace.printF2FInstr("fcvt.h.s");
+        INSTR_FCVTSAH:    trace.printF2FInstr("fcvt.s.ah");
+        INSTR_FCVTSH:     trace.printF2FInstr("fcvt.s.h");
         INSTR_FCVTWS:     trace.printFIInstr("fcvt.w.s");
         INSTR_FCVTWUS:    trace.printFIInstr("fcvt.wu.s");
         INSTR_FMVXS:      trace.printFIInstr("fmv.x.s");

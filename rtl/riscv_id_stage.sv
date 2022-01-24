@@ -181,10 +181,6 @@ module riscv_id_stage
     input logic                            apu_busy_i,
     input logic [C_RM-1:0]                 frm_i,
 
-
-    input logic [C_FPNEW_FMTBITS-1:0]      csr_fpu_dst_fmt_i, //Aggiunta sb fpu: aggiunto input della id_stage per ricevere il formato delle op fpu dallo status register.
-    input logic [C_FPNEW_FMTBITS-1:0]      csr_fpu_src_fmt_i, //Aggiunta sb fpu: come per il formato di destinazione.
-    input logic [C_FPNEW_IFMTBITS-1:0]     csr_fpu_int_fmt_i, //Aggiunta sb fpu: idem per il formato intero.
     input                                  ivec_mode_fmt csr_ivec_fmt_i, //Added ivec sb : current VEC_MODE coming from cs registers
     input logic [NBITS_MIXED_CYCLES-1:0]   csr_current_cycle_i, //Added for ivec sb : used by mixed precision controller to know the current mixed cycle
     input logic [NBITS_MAX_KER-1:0]        csr_skip_size_i, //Added for ivec sb : used by mpc to know after how many macs it can modify next cycle
@@ -438,20 +434,12 @@ module riscv_id_stage
 
   logic                   hwloop_valid;
 
-
   //Added for ivec sb : Now it has 4 bit, 3 for sb fpu and 1 for ivec. 
   logic [3:0]            write_sb_csr_n;  //aggiunta sb fpu: segnale da dec -> controller DA MODIFICARE: va anche alla pipeline per ora, devo togliere l'igresso del controller
   logic [3:0]            write_sb_csr_q;  //aggiunta sb fpu: mi serve per fare il fw del formato
   //per il source
-  logic [C_FPNEW_FMTBITS-1:0] csr_fpu_dst_fmt;   //aggiunta sb fpu: segnale che va all'ingresso del decoder
-  logic [C_FPNEW_FMTBITS-1:0] fpu_dst_fmt_fw;    //aggiunta sb fpu: usato se \E8 necessario fare il fw del valore dello csr che riguarda l fpu_fmt
-  //per destination
-  logic [C_FPNEW_FMTBITS-1:0] csr_fpu_src_fmt;   //aggiunta sb fpu: segnale che va all'ingresso del decoder
-  logic [C_FPNEW_FMTBITS-1:0] fpu_src_fmt_fw;    //aggiunta sb fpu: usato se serve il fw del source fmt
-  //per l'intero
-  logic [C_FPNEW_IFMTBITS-1:0] csr_fpu_int_fmt;     //Aggiunta sb fpu: segnale che entra al decoder
-  logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_fw;      //Aggiunta sb fpu: usato se serve il fw del formato intero
-   //Added for ivec sb : one of these signals will get to the decoder depending if the last instruction was writing to 0x00D or not
+
+  //Added for ivec sb : one of these signals will get to the decoder depending if the last instruction was writing to 0x00D or not
   ivec_mode_fmt   csr_ivec_fmt;  //Added for ivec sb : If last instruction didn't write to 0x00D this signal will be fed to the decoder
   ivec_mode_fmt   ivec_fmt_fw;   //Added for ivec sb : If last instruction WAS writing to 0x00D the cs reg it's not yet updated so this will be used by the decoder
 
@@ -902,21 +890,9 @@ module riscv_id_stage
     endcase
   end
 
-  //Aggiunta sb fpu: vedo se c'\E8 bisogno di usare il fw del destination format oppure no
-   assign fpu_dst_fmt_fw  = alu_operand_a_ex_o[C_FPNEW_FMTBITS-1:0];
-   assign csr_fpu_dst_fmt = write_sb_csr_q[0] ? fpu_dst_fmt_fw : csr_fpu_dst_fmt_i;
-   
-   //Aggiunta sb fpu: vedo se c'\E8 bisogno di usare il fw del source format oppure no
-   assign fpu_src_fmt_fw  = (write_sb_csr_q[1] & write_sb_csr_q[0]) ? alu_operand_a_ex_o[2*C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS] : alu_operand_a_ex_o[C_FPNEW_FMTBITS-1:0];
-   assign csr_fpu_src_fmt =  write_sb_csr_q[1] ? fpu_src_fmt_fw : csr_fpu_src_fmt_i;
-
-   //Aggiunta sb fpu: vedo se c'\E8 bisogno di usare il fw del fromato intero o no
-   assign fpu_int_fmt_fw  = (write_sb_csr_q[2] & (write_sb_csr_q[1] | write_sb_csr_q[0])) ? alu_operand_a_ex_o[C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS] : alu_operand_a_ex_o[C_FPNEW_IFMTBITS-1:0];
-   assign csr_fpu_int_fmt =  write_sb_csr_q[2] ? fpu_int_fmt_fw : csr_fpu_int_fmt_i;
-
-   //Added for ivec sb : making sure the instructions that is decoding is using the correct value of VEC_MODE
-   assign ivec_fmt_fw  = ivec_mode_fmt'(alu_operand_a_ex_o[IVEC_FMT_BITS-1:0]);
-   assign csr_ivec_fmt = write_sb_csr_q[3] ? ivec_fmt_fw : csr_ivec_fmt_i;
+  //Added for ivec sb : making sure the instructions that is decoding is using the correct value of VEC_MODE
+  assign ivec_fmt_fw  = ivec_mode_fmt'(alu_operand_a_ex_o[IVEC_FMT_BITS-1:0]);
+  assign csr_ivec_fmt = write_sb_csr_q[3] ? ivec_fmt_fw : csr_ivec_fmt_i;
 
 
 
@@ -1207,10 +1183,6 @@ module riscv_id_stage
 
     // FPU / APU signals
     .frm_i                           ( frm_i                     ),
-
-    .fpu_dst_fmt_i                   ( csr_fpu_dst_fmt           ), //Aggiunta sb fpu: Formato delle op fpu derivante dal csr
-    .fpu_src_fmt_i                   ( csr_fpu_src_fmt           ), //Aggiunta sb fpu: formato source potrebbe servire dentro al decoder
-    .fpu_int_fmt_i                   ( csr_fpu_int_fmt           ), //Aggiunta sb fpu: formato dell'intero potrebbe servire nel decoder
 
     .fpu_src_fmt_o                   ( fpu_src_fmt               ),
     .fpu_dst_fmt_o                   ( fpu_dst_fmt               ),

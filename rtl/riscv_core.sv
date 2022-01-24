@@ -265,10 +265,6 @@ module riscv_core
   logic [31:0] regfile_alu_wdata_fw;
 
   // CSR control
-
-  logic [C_FPNEW_FMTBITS-1:0]    fpu_dst_fmt_csr; //Aggiunta sb fpu: segnale che va da csr -> id_stage : destination del formato
-  logic [C_FPNEW_FMTBITS-1:0]    fpu_src_fmt_csr; //Aggiunta sb fpu: segnale che va da csr -> id_stage : source del formato (casting)
-  logic [C_FPNEW_IFMTBITS-1:0]   fpu_int_fmt_csr; //Aggiunta sb fpu: segnale che va da csr -> id_stage : formato intero (casting)
   ivec_mode_fmt                  ivec_fmt_csr;    //Added ivec sb : signal that goes from csr -> id_stage : used to decide the vectorial mode of the istruction
   logic [NBITS_MIXED_CYCLES-1:0] current_cycle_csr;
   logic [NBITS_MAX_KER-1:0]      skip_size_csr;  //Added for ivec sb : used by mpc to know when to update next cycle
@@ -725,10 +721,6 @@ module riscv_core
     .apu_write_dep_i              ( apu_write_dep           ),
     .apu_perf_dep_o               ( perf_apu_dep            ),
     .apu_busy_i                   ( apu_busy                ),
-
-    .csr_fpu_dst_fmt_i            ( fpu_dst_fmt_csr      ), //aggiunta sb fpu: id_stage prende in input il fmt della fpu
-    .csr_fpu_src_fmt_i            ( fpu_src_fmt_csr      ), //aggiunta sb fpu: come per il formato di destinazione
-    .csr_fpu_int_fmt_i            ( fpu_int_fmt_csr      ), //aggiunta sb fpu: idem per il fomato intero
     
     .csr_ivec_fmt_i               ( ivec_fmt_csr         ), //added ivec sb : needed inside the decoder to update the VEC_MODE
     .csr_current_cycle_i          ( current_cycle_csr    ), //added for ivec sb : used by the mixed precision controller to know at what cycle we're currently at
@@ -1292,7 +1284,10 @@ module riscv_core
   logic tracer_clk;
   assign #1 tracer_clk = clk_i;
 
-  riscv_tracer riscv_tracer_i
+  riscv_tracer 
+  #( .Zfinx         ( Zfinx                                )
+   )
+  riscv_tracer_i
   (
     .clk            ( tracer_clk                           ), // always-running clock for tracing
     .rst_n          ( rst_ni                               ),
