@@ -1104,9 +1104,6 @@ module riscv_core
     .csr_macl_wdata_i        ( csr_macl_wdata     ), //from macload_controller
     .csr_macl_op_i           ( csr_macl_op        ), //from macload controller
 
-    .fpu_dst_fmt_o           ( fpu_dst_fmt_csr    ),  //Aggiunta sb fpu: Mi serve portarlo in ingresso all'id_stage
-    .fpu_src_fmt_o           ( fpu_src_fmt_csr    ),  //Aggiunta sb fpu: Lo porto in ingresso all'id_stage
-    .fpu_int_fmt_o           ( fpu_int_fmt_csr    ),  //Aggiunta sb fpu: Sempre all'ingresso dell'id_stage
     .ivec_fmt_o              ( ivec_fmt_csr       ),  //Added ivec sb : To connect to the id_stage
     .ivec_mixed_cycle_o      ( current_cycle_csr  ),  //Added for ivec sb : Cycles counter for mixed precion operations
     .ivec_skip_size_o        ( skip_size_csr      ),  //Added for ivec sb : Used by mpc to know when to increase next_cycle

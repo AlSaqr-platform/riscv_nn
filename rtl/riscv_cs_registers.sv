@@ -72,9 +72,6 @@ module riscv_cs_registers
   input logic [31:0]                      csr_macl_wdata_i,
   input logic [1:0]                       csr_macl_op_i,
 
-  output logic [C_FPNEW_FMTBITS-1:0]      fpu_dst_fmt_o, //aggiunta sb fpu
-  output logic [C_FPNEW_FMTBITS-1:0]      fpu_src_fmt_o, //aggiunta sb fpu
-  output logic [C_FPNEW_IFMTBITS-1:0]     fpu_int_fmt_o, //aggiunta sb fpu
   output                                  ivec_mode_fmt ivec_fmt_o, //added for sb ivec : for now it's 2 bits(only int16 and int8)but it will need to be adjusted
   output logic [NBITS_MIXED_CYCLES-1:0]   ivec_mixed_cycle_o, //added for sb ivec : output of counter of number of cycles for mixed precision operations
   output logic [NBITS_MAX_KER-1:0]        ivec_skip_size_o, //added for sb ivec : used by mpc to know when to increase next cycle
@@ -1264,9 +1261,6 @@ end //PULP_SECURE
   assign frm_o           = (FPU == 1) ? frm_q : '0;
   assign fprec_o         = (FPU == 1) ? fprec_q : '0;
 
-  assign fpu_dst_fmt_o   = (FPU == 1) ? fpu_dst_fmt_q : '0;  //aggiunta sb fpu
-  assign fpu_src_fmt_o   = (FPU == 1) ? fpu_src_fmt_q : '0; //aggiunta sb fpu
-  assign fpu_int_fmt_o      = (FPU == 1) ? fpu_int_fmt_q : '0; //aggiunta sb fpu
   assign ivec_fmt_o      = ivec_fmt_q;  //added for ivec sb : output directly the format for ivec
   assign ivec_mixed_cycle_o = ivec_mixed_cycle_q; //added for ivec sb : output directly the counter of cycle for ivec sb
   assign ivec_skip_size_o   = ivec_skip_size_q;   //added for ivec sb : output directly the skip size value      
