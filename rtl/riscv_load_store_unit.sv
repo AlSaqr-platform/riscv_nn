@@ -494,9 +494,15 @@ module riscv_load_store_unit
       if(update_a_ex_i && update_w_ex_i)
         data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
       else if(update_a_ex_i)
-        data_addr_int = a_addr_i;
+        if(~data_misaligned_ex_i)
+          data_addr_int = a_addr_i;
+        else
+          data_addr_int = (addr_useincr_ex_i) ? (a_addr_i + operand_b_ex_i) : a_addr_i;
       else if(update_w_ex_i)
-        data_addr_int = w_addr_i;
+        if(~data_misaligned_ex_i)
+          data_addr_int = w_addr_i;
+        else
+          data_addr_int = (addr_useincr_ex_i) ? (w_addr_i + operand_b_ex_i) : w_addr_i;
       else
         data_addr_int = (addr_useincr_ex_i) ? (operand_a_ex_i + operand_b_ex_i) : operand_a_ex_i;
     end

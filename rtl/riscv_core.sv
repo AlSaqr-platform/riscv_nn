@@ -1044,6 +1044,7 @@ module riscv_core
       .rstn_i             ( rst_ni           ),
       .update_a_i         ( lsu_tospra_ex[0] ),
       .update_w_i         ( lsu_tosprw_ex[0] ),
+      .id_valid_i         ( id_valid         ),
       .ex_valid_i         ( ex_valid         ),
       .csr_a_rstn_i       ( macl_a_rstn      ),
       .csr_w_rstn_i       ( macl_w_rstn      ),

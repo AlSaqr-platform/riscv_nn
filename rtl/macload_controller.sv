@@ -2,32 +2,33 @@ import riscv_defines::*;
 `include "riscv_config.sv"
 
 module macload_controller(
-	input logic			clk_i,
-	input logic			rstn_i,
-	input logic			update_a_i,  //from ID
-	input logic 		update_w_i,  //from ID
-	input logic			ex_valid_i,	 //from EX
-	input logic 		csr_a_rstn_i,//from CSR
-	input logic 		csr_w_rstn_i,//from CSR
-	input logic [31:0]	a_address_i, //from CSR
-	input logic [31:0]	w_address_i, //from CSR
-	input logic [31:0]	a_stride_i,	 //from CSR
-	input logic [31:0]	w_stride_i,	 //from CSR
+	input logic         clk_i,
+	input logic         rstn_i,
+	input logic         update_a_i, //from ID
+	input logic         update_w_i, //from ID
+  input logic         id_valid_i, //fromID        
+	input logic         ex_valid_i, //from EX
+	input logic         csr_a_rstn_i,//from CSR
+	input logic         csr_w_rstn_i,//from CSR
+	input logic [31:0]  a_address_i, //from CSR
+	input logic [31:0]  w_address_i, //from CSR
+	input logic [31:0]  a_stride_i, //from CSR
+	input logic [31:0]  w_stride_i, //from CSR
 	input logic [31:0]  a_rollback_i,//from CSR
-	input logic [31:0]	w_rollback_i,//from CSR
-	input logic [31:0]	a_skip_i,	 //from CSR
-	input logic [31:0]	w_skip_i,	 //from CSR
-	output logic [31:0]	updated_address_o,//to CSR
-	output logic [1:0]	csr_op_o,		  //to CSR
+	input logic [31:0]  w_rollback_i,//from CSR
+	input logic [31:0]  a_skip_i, //from CSR
+	input logic [31:0]  w_skip_i, //from CSR
+	output logic [31:0] updated_address_o,//to CSR
+	output logic [1:0]  csr_op_o, //to CSR
 	output logic [11:0] csr_address_o	  //to CSR
 	);
 
 logic update_a_int, update_w_int;
 logic [31:0] a_count_n, a_count_q, w_count_n, w_count_q;
 
-assign update_a_int = update_a_i & ex_valid_i;
-assign update_w_int = update_w_i & ex_valid_i;
-
+assign update_a_int = update_a_i & ex_valid_i & id_valid_i;
+assign update_w_int = update_w_i & ex_valid_i & id_valid_i;
+   
 //Activations updates counter
 assign a_count_n = a_count_q + 32'd1;
 
