@@ -71,7 +71,7 @@ module riscv_ex_stage
   input logic [ 1:0]                     alu_clpx_shift_i,
 
   // Multiplier signals
-  input mult_op_type                     mult_operator_i, //Modified for ivec sb : changed from logic to mult_op_type
+  input                                  mult_op_type mult_operator_i, //Modified for ivec sb : changed from logic to mult_op_type
 
   input logic [31:0]                     mult_operand_a_i,
   input logic [31:0]                     mult_operand_b_i,
@@ -97,8 +97,10 @@ module riscv_ex_stage
   input logic                            dot_spr_operand_i,
 
 
-  input logic [NBITS_MIXED_CYCLES-1:0]   current_cycle_i, //added for ivec sb: used to know at which mixed multiplication position we currently are. 
-
+  input logic [NBITS_MIXED_CYCLES-1:0]   current_cycle_csr_i, //added for ivec sb: used to know at which mixed multiplication position we currently are. 
+  input logic [NBITS_MIXED_CYCLES-1:0]   current_cycle_ex_i,
+  input logic                            curr_cyc_sel_i,
+ 
   output logic                           mult_multicycle_o,
 
   // FPU signals
@@ -234,6 +236,8 @@ module riscv_ex_stage
   logic [31:0]    mult_dot_op_n_b_ml; //RNN_EXT
   logic [31:0]    mult_dot_op_c_b_ml; //RNN_EXT
   logic           loadComputeVLIW;  //RNN_EXT
+
+  logic [NBITS_MIXED_CYCLES-1:0] current_cycle;
 
   assign loadComputeVLIW = dot_spr_operand_i & mult_en_i; //alu_en_i & mult_en_i;
   assign computeLoadVLIW_ex_o = loadComputeVLIW;
@@ -396,7 +400,8 @@ module riscv_ex_stage
   assign mult_dot_op_c_b_ml = {32{(mult_operator_i == MUL_DOT2)}}  & 
                               (dot_spr_operand_i ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_c_b_i);
 
-   
+  assign current_cycle = curr_cyc_sel_i ? current_cycle_csr_i : current_cycle_ex_i; 
+  
   riscv_mult
   #(
     .SHARED_DSP_MULT(SHARED_DSP_MULT)
@@ -428,7 +433,7 @@ module riscv_ex_stage
     .dot_op_c_i      ( mult_dot_op_c_i      ),
     .dot_signed_i    ( mult_dot_signed_i    ),
 
-   .current_cycle_i ( current_cycle_i      ),
+    .current_cycle_i ( current_cycle        ),
 
     .is_clpx_i       ( mult_is_clpx_i       ),
     .clpx_shift_i    ( mult_clpx_shift_i    ),

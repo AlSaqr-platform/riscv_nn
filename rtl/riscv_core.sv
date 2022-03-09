@@ -266,7 +266,7 @@ module riscv_core
 
   // CSR control
   ivec_mode_fmt                  ivec_fmt_csr;    //Added ivec sb : signal that goes from csr -> id_stage : used to decide the vectorial mode of the istruction
-  logic [NBITS_MIXED_CYCLES-1:0] current_cycle_csr;
+  logic [NBITS_MIXED_CYCLES-1:0] current_cycle_csr, current_cycle_ex;
   logic [NBITS_MAX_KER-1:0]      skip_size_csr;  //Added for ivec sb : used by mpc to know when to update next cycle
   logic                          sb_legacy_mode; //Added for sb : Legacy MODE
   
@@ -293,6 +293,7 @@ module riscv_core
   logic [31:0] a_skip, w_skip;
   logic macl_a_rstn;
   logic macl_w_rstn;
+  logic curr_cyc_sel; 
 
   // Data Memory Control:  From ID stage (id-ex pipe) <--> load store unit
   logic        data_we_ex;
@@ -658,6 +659,7 @@ module riscv_core
 
     .ivec_op_ex_o                 ( ivec_op_ex           ), //Added for ivec sb
 
+
     .alu_operator_ex_o            ( alu_operator_ex      ),
     .alu_operand_a_ex_o           ( alu_operand_a_ex     ),
     .alu_operand_b_ex_o           ( alu_operand_b_ex     ),
@@ -726,8 +728,11 @@ module riscv_core
     .csr_current_cycle_i          ( current_cycle_csr    ), //added for ivec sb : used by the mixed precision controller to know at what cycle we're currently at
     .csr_skip_size_i              ( skip_size_csr        ),
     .next_cycle_ex_o              ( mpc_next_cycle       ), //added for ivec sb : Used to write next cycle into csr
+    .current_cycle_ex_o           ( current_cycle_ex     ),
     .mux_sel_wcsr_ex_o            ( mux_sel_wcsr         ), //added for ivec sb : used to override normal writing signals on csr
     .sb_legacy_i                  ( sb_legacy_mode       ), //Added for sb : Legacy MODE
+    .curr_cyc_sel_o               ( curr_cyc_sel         ),
+   
 
     // CSR ID/EX
     .csr_access_ex_o              ( csr_access_ex        ),
@@ -881,8 +886,10 @@ module riscv_core
     .dot_spr_operand_i          ( dot_spr_operand_ex           ),
 
     .mult_multicycle_o          ( mult_multicycle              ), // to ID/EX pipe registers
-    .current_cycle_i            ( current_cycle_csr            ), // added for ivec sb : Current cycle for mixed preision
-    
+    .current_cycle_csr_i        ( current_cycle_csr            ), // added for ivec sb : Current cycle for mixed preision
+    .current_cycle_ex_i         ( current_cycle_ex             ),
+    .curr_cyc_sel_i             ( curr_cyc_sel                 ),
+   
     .computeLoadVLIW_ex_o       (loadComputeVLIW_ex            ), //RNN_EXT
     // FPU
     .fpu_prec_i                 ( fprec_csr                    ),

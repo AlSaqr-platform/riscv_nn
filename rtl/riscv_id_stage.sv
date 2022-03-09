@@ -119,6 +119,8 @@ module riscv_id_stage
 
     output                                 ivec_mode_fmt alu_vec_mode_ex_o, //modified for ivec sb : changed from logic to ivec_mode_fmt
 
+    output logic                           curr_cyc_sel_o,
+
 
     output logic [5:0]                     regfile_waddr_ex_o,
     output logic                           regfile_we_ex_o,
@@ -186,6 +188,7 @@ module riscv_id_stage
     input logic [NBITS_MAX_KER-1:0]        csr_skip_size_i, //Added for ivec sb : used by mpc to know after how many macs it can modify next cycle
 
     output logic [NBITS_MIXED_CYCLES-1:0]  next_cycle_ex_o, //added for ivec sb : used to write next cycle into csr
+    output logic [NBITS_MIXED_CYCLES-1:0]  current_cycle_ex_o,
     output logic                           mux_sel_wcsr_ex_o, //added for ivec sb : used to override normal csr write signals
     input logic                            sb_legacy_i,
 
@@ -1502,6 +1505,7 @@ module riscv_id_stage
       .clk             ( clk              ),
       .rst_n           ( rst_n            ),
       .illegal_insn_i  ( illegal_insn_dec ),
+      .id_valid_i      ( id_valid_o       ),
       .is_decoding_i   ( is_decoding_o    ),
       .ex_ready_i      ( ex_ready_i       ),
       .ivec_fmt_i      ( csr_ivec_fmt     ),
@@ -1606,7 +1610,9 @@ module riscv_id_stage
       
       //added for ivec sb : Mux selector and next cycle for mixed precision ops.
       mux_sel_wcsr_ex_o           <= 0;       
-      next_cycle_ex_o             <= '0;       
+      next_cycle_ex_o             <= '0;
+
+      current_cycle_ex_o          <= '0;
 
 
       data_we_ex_o                <= 1'b0;
@@ -1757,6 +1763,10 @@ module riscv_id_stage
         mux_sel_wcsr_ex_o           <= mux_sel_wcsr;   //Added for ivec sb : Used to write the next_cycle in the csr    
         next_cycle_ex_o             <= next_cycle;     //Added for ivec sb : Value of the next cycle for mixedPrecision
 
+        if(is_decoding_o) begin
+         current_cycle_ex_o          <= csr_current_cycle_i;
+        end
+
         lsu_tosprw_ex_o             <= lsu_tosprw_id;
         lsu_tospra_ex_o             <= lsu_tospra_id;
         data_req_ex_o               <= data_req_id;
@@ -1818,6 +1828,14 @@ module riscv_id_stage
   assign id_ready_o = ((~misaligned_stall) & (~jr_stall) & (~load_stall) & (~apu_stall) & (~csr_apu_stall) & ex_ready_i);
   assign id_valid_o = (~halt_id) & id_ready_o;
 
+
+  // current cycle selector for sb mixed-precision MACLOAD
+  always_ff @(posedge clk, negedge rst_n) begin
+  if(rst_n ==1'b0)
+    curr_cyc_sel_o <= '0;
+  else
+    curr_cyc_sel_o <= id_valid_o && is_decoding_o;
+  end
 
   //----------------------------------------------------------------------------
   // Assertions
