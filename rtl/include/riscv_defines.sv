@@ -25,10 +25,6 @@
 
 package riscv_defines;
 
-//Status Based Define
-`include "riscv_config.sv"
-  
-  
 ////////////////////////////////////////////////
 //    ___         ____          _             //
 //   / _ \ _ __  / ___|___   __| | ___  ___   //
@@ -56,6 +52,7 @@ parameter OPCODE_OP_FMSUB  = 7'h47;
 parameter OPCODE_OP_FNMSUB = 7'h4b;
 parameter OPCODE_STORE_FP  = 7'h27;
 parameter OPCODE_LOAD_FP   = 7'h07;
+parameter OPCODE_AMO       = 7'h2F;
 
 // those opcodes are now used for PULP custom instructions
 // parameter OPCODE_CUST0     = 7'h0b
@@ -67,9 +64,6 @@ parameter OPCODE_STORE_POST = 7'h2b;
 parameter OPCODE_PULP_OP    = 7'h5b;
 parameter OPCODE_VECOP      = 7'h57;
 parameter OPCODE_HWLOOP     = 7'h7b;
-
-// RNN_EXTENSIONS (MAC&LOAD)
-parameter OPCODE_MAC_LOAD  = 7'h77;
 
 parameter REGC_S1   = 2'b10;
 parameter REGC_S4   = 2'b00;
@@ -96,8 +90,7 @@ parameter ALU_ADDR  = 7'b0011100;
 parameter ALU_SUBR  = 7'b0011101;
 parameter ALU_ADDUR = 7'b0011110;
 parameter ALU_SUBUR = 7'b0011111;
-parameter ALU_ADD4  = 7'b0100000;   
-   
+
 parameter ALU_XOR   = 7'b0101111;
 parameter ALU_OR    = 7'b0101110;
 parameter ALU_AND   = 7'b0010101;
@@ -181,73 +174,19 @@ parameter ALU_FMAX    = 7'b1000110;
 parameter ALU_FMIN    = 7'b1000111;
 parameter ALU_FCLASS  = 7'b1001000;
 
-//Added for ivec sb : for new vectorial multiplier formats increas mult_ivec_fmt
-localparam int unsigned NUM_MULT_FORMATS = 5;
-localparam int unsigned NUM_MULT_IVEC = 10;
-localparam int unsigned MUL_TYPES_BITS = $clog2(NUM_MULT_FORMATS + NUM_MULT_IVEC);
+parameter MUL_MAC32 = 3'b000;
+parameter MUL_MSU32 = 3'b001;
+parameter MUL_I     = 3'b010;
+parameter MUL_IR    = 3'b011;
+parameter MUL_DOT8  = 3'b100;
+parameter MUL_DOT16 = 3'b101;
+parameter MUL_H     = 3'b110;
 
-typedef enum logic [MUL_TYPES_BITS-1 : 0]
-             {
-              MUL_MAC32,
-              MUL_MSU32,
-              MUL_I,
-              MUL_IR,
-              MUL_H,
-              MUL_DOT16,
-              MUL_DOT8,
-              MUL_DOT4,
-              MUL_DOT2,
-              MIXED_MUL_2x4,
-              MIXED_MUL_2x8,
-              MIXED_MUL_2x16,
-              MIXED_MUL_4x8,
-              MIXED_MUL_4x16,
-              MIXED_MUL_8x16
-             } mult_op_type;
-   
-//Added for ivec sb : if we want to add new ivec formats modify NUM_IVEC_FORMATS
-localparam int unsigned NUM_IVEC_FORMATS = 11;
-localparam int unsigned IVEC_FMT_BITS = $clog2(NUM_IVEC_FORMATS);
-  
 // vector modes
-typedef enum logic [IVEC_FMT_BITS-1:0]
-{
- VEC_MODE32,
- VEC_MODE16,
- VEC_MODE8,
- VEC_MODE4,
- VEC_MODE2,
- MIXED_2x4,
- MIXED_2x8,
- MIXED_2x16,
- MIXED_4x8,
- MIXED_4x16,
- MIXED_8x16
-} ivec_mode_fmt;
-//Added for ivec sb : Defines the maximum number of operations you can do with one register.
-//With 2 bits we reuse the same register for 16 multiplications
-localparam int unsigned MAX_MIXED_MUL = 8;
-localparam int unsigned NBITS_MIXED_CYCLES = $clog2(MAX_MIXED_MUL);   
+parameter VEC_MODE32 = 2'b00;
+parameter VEC_MODE16 = 2'b10;
+parameter VEC_MODE8  = 2'b11;
 
-typedef enum bit [5:0] {
-                        DOTUP   = 6'b10000_0, 
-                        DOTUSP  = 6'b10001_0, 
-                        DOTSP   = 6'b10011_0, 
-                        SDOTUP  = 6'b10100_0, 
-                        SDOTUSP = 6'b10101_0, 
-                        SDOTSP  = 6'b10111_0
-                        } dotp_opcode_t;
-
-typedef enum logic [1:0] {
-                          MPC_CSR,        //Use the Cycles value from CSR 
-                          MPC_CSR_WRITE,  //Use the value that is about to be written into the CSR
-                          MPC_MIX_CNTRL   //Use the last value that the Mixed precision controller wrote
-                          } mux_sel_mpc;
-//Used by mpc to know after how many macs it should start updating cycles
-localparam int unsigned MAX_KER_SIZE = 17; //The size it's 8 but you need 9 elements to encode it 0 to 8.
-localparam int unsigned NBITS_MAX_KER = $clog2(MAX_KER_SIZE);
-
-  
 /////////////////////////////////////////////////////////
 //    ____ ____    ____            _     _             //
 //   / ___/ ___|  |  _ \ ___  __ _(_)___| |_ ___ _ __  //
@@ -263,9 +202,6 @@ parameter CSR_OP_WRITE = 2'b01;
 parameter CSR_OP_SET   = 2'b10;
 parameter CSR_OP_CLEAR = 2'b11;
 
-// CSR addresses for activations and weights used in status-based MACLOAD
-parameter CSR_A_ADDR = 12'h100;
-parameter CSR_W_ADDR = 12'h101;
 
 // SPR for debugger, not accessible by CPU
 parameter SP_DVR0       = 16'h3000;
@@ -330,7 +266,6 @@ parameter IMMB_VU     = 4'b0111;
 parameter IMMB_SHUF   = 4'b1000;
 parameter IMMB_CLIP   = 4'b1001;
 parameter IMMB_BI     = 4'b1011;
-parameter IMMB_MACL   = 4'b1100;
 
 // bit mask selection
 parameter BMASK_A_ZERO = 1'b0;
@@ -367,6 +302,18 @@ parameter JT_JAL  = 2'b01;
 parameter JT_JALR = 2'b10;
 parameter JT_COND = 2'b11;
 
+// Atomic operations
+parameter AMO_LR   = 5'b00010;
+parameter AMO_SC   = 5'b00011;
+parameter AMO_SWAP = 5'b00001;
+parameter AMO_ADD  = 5'b00000;
+parameter AMO_XOR  = 5'b00100;
+parameter AMO_AND  = 5'b01100;
+parameter AMO_OR   = 5'b01000;
+parameter AMO_MIN  = 5'b10000;
+parameter AMO_MAX  = 5'b10100;
+parameter AMO_MINU = 5'b11000;
+parameter AMO_MAXU = 5'b11100;
 
 ///////////////////////////////////////////////
 //   ___ _____   ____  _                     //
@@ -449,10 +396,10 @@ parameter bit C_RVF = 1'b1; // Is F extension enabled
 parameter bit C_RVD = 1'b0; // Is D extension enabled - NOT SUPPORTED CURRENTLY
 
 // Transprecision floating-point extensions configuration
-parameter bit C_XF16    = 1'b1; // Is half-precision float extension (Xf16) enabled
-parameter bit C_XF16ALT = 1'b1; // Is alternative half-precision float extension (Xf16alt) enabled
-parameter bit C_XF8     = 1'b1; // Is quarter-precision float extension (Xf8) enabled
-parameter bit C_XFVEC   = 1'b1; // Is vectorial float extension (Xfvec) enabled
+parameter bit C_XF16    = 1'b0; // Is half-precision float extension (Xf16) enabled
+parameter bit C_XF16ALT = 1'b0; // Is alternative half-precision float extension (Xf16alt) enabled
+parameter bit C_XF8     = 1'b0; // Is quarter-precision float extension (Xf8) enabled
+parameter bit C_XFVEC   = 1'b0; // Is vectorial float extension (Xfvec) enabled
 
 // FPnew configuration
 parameter C_FPNEW_OPBITS   = fpnew_pkg::OP_BITS;
@@ -465,7 +412,7 @@ parameter int unsigned C_LAT_FP32       = 'd1;
 parameter int unsigned C_LAT_FP16       = 'd1;
 parameter int unsigned C_LAT_FP16ALT    = 'd1;
 parameter int unsigned C_LAT_FP8        = 'd1;
-parameter int unsigned C_LAT_DIVSQRT    = 'd2; // divsqrt post-processing pipe
+parameter int unsigned C_LAT_DIVSQRT    = 'd1; // divsqrt post-processing pipe
 parameter int unsigned C_LAT_CONV       = 'd1;
 parameter int unsigned C_LAT_NONCOMP    = 'd1;
 
@@ -504,13 +451,70 @@ parameter HWLoop1_END           = 12'h7C5; //NON standard read/write (Machine CS
 parameter HWLoop1_COUNTER       = 12'h7C6; //NON standard read/write (Machine CSRs). Old address 12'h7B6;
 
 //Performance Counters
-//event and mode registers
-parameter PCER_USER = 12'hCC0; //NON standard read-only (User CSRs). Old address 12'h7A0;
-parameter PCMR_USER = 12'hCC1; //NON standard read-only (User CSRs). Old address 12'h7A1;
-
-parameter PCER_MACHINE = 12'h7E0; //NON standard read/write (Machine CSRs)
-parameter PCMR_MACHINE = 12'h7E1; //NON standard read/write (Machine CSRs)
-
+typedef enum logic [11:0] {
+  CSR_MCOUNTEREN    = 12'h306,
+  CSR_MCOUNTINHIBIT = 12'h320,
+  CSR_MHPMEVENT3    = 12'h323,
+  CSR_MHPMEVENT4    = 12'h324,
+  CSR_MHPMEVENT5    = 12'h325,
+  CSR_MHPMEVENT6    = 12'h326,
+  CSR_MHPMEVENT7    = 12'h327,
+  CSR_MHPMEVENT8    = 12'h328,
+  CSR_MHPMEVENT9    = 12'h329,
+  CSR_MHPMEVENT10   = 12'h32A,
+  CSR_MHPMEVENT11   = 12'h32B,
+  CSR_MHPMEVENT12   = 12'h32C,
+  CSR_MHPMEVENT13   = 12'h32D,
+  CSR_MHPMEVENT14   = 12'h32E,
+  CSR_MHPMEVENT15   = 12'h32F,
+  CSR_MHPMEVENT16   = 12'h330,
+  CSR_MHPMEVENT17   = 12'h331,
+  CSR_MHPMEVENT18   = 12'h332,
+  CSR_MHPMEVENT19   = 12'h333,
+  CSR_MHPMEVENT20   = 12'h334,
+  CSR_MHPMEVENT21   = 12'h335,
+  CSR_MHPMEVENT22   = 12'h336,
+  CSR_MHPMEVENT23   = 12'h337,
+  CSR_MHPMEVENT24   = 12'h338,
+  CSR_MHPMEVENT25   = 12'h339,
+  CSR_MHPMEVENT26   = 12'h33A,
+  CSR_MHPMEVENT27   = 12'h33B,
+  CSR_MHPMEVENT28   = 12'h33C,
+  CSR_MHPMEVENT29   = 12'h33D,
+  CSR_MHPMEVENT30   = 12'h33E,
+  CSR_MHPMEVENT31   = 12'h33F,
+  CSR_MCYCLE        = 12'hB00,
+  CSR_MINSTRET      = 12'hB02,
+  CSR_MHPMCOUNTER3  = 12'hB03,
+  CSR_MHPMCOUNTER4  = 12'hB04,
+  CSR_MHPMCOUNTER5  = 12'hB05,
+  CSR_MHPMCOUNTER6  = 12'hB06,
+  CSR_MHPMCOUNTER7  = 12'hB07,
+  CSR_MHPMCOUNTER8  = 12'hB08,
+  CSR_MHPMCOUNTER9  = 12'hB09,
+  CSR_MHPMCOUNTER10 = 12'hB0A,
+  CSR_MHPMCOUNTER11 = 12'hB0B,
+  CSR_MHPMCOUNTER12 = 12'hB0C,
+  CSR_MHPMCOUNTER13 = 12'hB0D,
+  CSR_MHPMCOUNTER14 = 12'hB0E,
+  CSR_MHPMCOUNTER15 = 12'hB0F,
+  CSR_MHPMCOUNTER16 = 12'hB10,
+  CSR_MHPMCOUNTER17 = 12'hB11,
+  CSR_MHPMCOUNTER18 = 12'hB12,
+  CSR_MHPMCOUNTER19 = 12'hB13,
+  CSR_MHPMCOUNTER20 = 12'hB14,
+  CSR_MHPMCOUNTER21 = 12'hB15,
+  CSR_MHPMCOUNTER22 = 12'hB16,
+  CSR_MHPMCOUNTER23 = 12'hB17,
+  CSR_MHPMCOUNTER24 = 12'hB18,
+  CSR_MHPMCOUNTER25 = 12'hB19,
+  CSR_MHPMCOUNTER26 = 12'hB1A,
+  CSR_MHPMCOUNTER27 = 12'hB1B,
+  CSR_MHPMCOUNTER28 = 12'hB1C,
+  CSR_MHPMCOUNTER29 = 12'hB1D,
+  CSR_MHPMCOUNTER30 = 12'hB1E,
+  CSR_MHPMCOUNTER31 = 12'hB1F
+} csr_num_e;
 
 // Debug CSR
 parameter CSR_DCSR           = 12'h7b0;

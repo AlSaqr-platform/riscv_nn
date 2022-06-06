@@ -26,38 +26,33 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import riscv_defines::*;
-`include "riscv_config.sv"
-
-module riscv_alu
+module riscv_alu import riscv_defines::*;
 #(
   parameter SHARED_INT_DIV = 0,
   parameter FPU            = 0
 )(
-  input logic                    clk,
-  input logic                    rst_n,
-  input logic                    enable_i,
-  input logic [ALU_OP_WIDTH-1:0] operator_i,
-  input logic [31:0]             operand_a_i,
-  input logic [31:0]             operand_b_i,
-  input logic [31:0]             operand_c_i,
+  input  logic                     clk,
+  input  logic                     rst_n,
+  input  logic                     enable_i,
+  input  logic [ALU_OP_WIDTH-1:0]  operator_i,
+  input  logic [31:0]              operand_a_i,
+  input  logic [31:0]              operand_b_i,
+  input  logic [31:0]              operand_c_i,
 
-  input ivec_mode_fmt            vector_mode_i, //Modified for ivec sb : changed from logic to ivec_mode_fmt
-  input logic                    ivec_op_i,     //Added for ivec sb : 1 if the istruction being executed its vectorial
+  input  logic [ 1:0]              vector_mode_i,
+  input  logic [ 4:0]              bmask_a_i,
+  input  logic [ 4:0]              bmask_b_i,
+  input  logic [ 1:0]              imm_vec_ext_i,
 
-  input logic [ 4:0]             bmask_a_i,
-  input logic [ 4:0]             bmask_b_i,
-  input logic [ 1:0]             imm_vec_ext_i,
+  input  logic                     is_clpx_i,
+  input  logic                     is_subrot_i,
+  input  logic [ 1:0]              clpx_shift_i,
 
-  input logic                    is_clpx_i,
-  input logic                    is_subrot_i,
-  input logic [ 1:0]             clpx_shift_i,
+  output logic [31:0]              result_o,
+  output logic                     comparison_result_o,
 
-  output logic [31:0]            result_o,
-  output logic                   comparison_result_o,
-
-  output logic                   ready_o,
-  input logic                    ex_ready_i
+  output logic                     ready_o,
+  input  logic                     ex_ready_i
 );
 
 
@@ -105,9 +100,10 @@ module riscv_alu
 
   logic        adder_op_b_negate;
   logic [31:0] adder_op_a, adder_op_b;
-  logic [47:0] adder_in_a, adder_in_b;
+  logic [35:0] adder_in_a, adder_in_b;
   logic [31:0] adder_result;
-  logic [48:0] adder_result_expanded;
+  logic [36:0] adder_result_expanded;
+
 
   assign adder_op_b_negate = (operator_i == ALU_SUB) || (operator_i == ALU_SUBR) ||
                              (operator_i == ALU_SUBU) || (operator_i == ALU_SUBUR) || is_subrot_i;
@@ -116,196 +112,67 @@ module riscv_alu
   assign adder_op_a = (operator_i == ALU_ABS) ? operand_a_neg : ( is_subrot_i ? {operand_b_i[15:0], operand_a_i[31:16]} : operand_a_i );
 
   // prepare operand b
-  assign adder_op_b = (operator_i == ALU_ADD4) ? 'h4 :  adder_op_b_negate ? ( is_subrot_i ? ~{operand_a_i[15:0], operand_b_i[31:16]} : operand_b_neg ) : operand_b_i;
+  assign adder_op_b = adder_op_b_negate ? ( is_subrot_i ? ~{operand_a_i[15:0], operand_b_i[31:16]} : operand_b_neg ) : operand_b_i;
 
   // prepare carry
   always_comb
   begin
     adder_in_a[    0] = 1'b1;
-    adder_in_a[ 2: 1] = adder_op_a[ 1: 0];
-    adder_in_a[    3] = 1'b1;
-    adder_in_a[ 5: 4] = adder_op_a[ 3: 2];
-    adder_in_a[    6] = 1'b1;
-    adder_in_a[ 8: 7] = adder_op_a[ 5: 4];
+    adder_in_a[ 8: 1] = adder_op_a[ 7: 0];
     adder_in_a[    9] = 1'b1;
-    adder_in_a[11:10] = adder_op_a[ 7: 6];
-    adder_in_a[   12] = 1'b1;
-    adder_in_a[14:13] = adder_op_a[ 9: 8];
-    adder_in_a[   15] = 1'b1;
-    adder_in_a[17:16] = adder_op_a[11:10];
+    adder_in_a[17:10] = adder_op_a[15: 8];
     adder_in_a[   18] = 1'b1;
-    adder_in_a[20:19] = adder_op_a[13:12];
-    adder_in_a[   21] = 1'b1;
-    adder_in_a[23:22] = adder_op_a[15:14];
-    adder_in_a[   24] = 1'b1;
-    adder_in_a[26:25] = adder_op_a[17:16];
+    adder_in_a[26:19] = adder_op_a[23:16];
     adder_in_a[   27] = 1'b1;
-    adder_in_a[29:28]  = adder_op_a[19:18];
-    adder_in_a[   30] = 1'b1;
-    adder_in_a[32:31] = adder_op_a[21:20];
-    adder_in_a[   33] = 1'b1;
-    adder_in_a[35:34] = adder_op_a[23:22];
-    adder_in_a[   36] = 1'b1;
-    adder_in_a[38:37] = adder_op_a[25:24];
-    adder_in_a[   39] = 1'b1;
-    adder_in_a[41:40] = adder_op_a[27:26];
-    adder_in_a[   42] = 1'b1;
-    adder_in_a[44:43] = adder_op_a[29:28];
-    adder_in_a[   45] = 1'b1;
-    adder_in_a[47:46] = adder_op_a[31:30];
+    adder_in_a[35:28] = adder_op_a[31:24];
 
     adder_in_b[    0] = 1'b0;
-    adder_in_b[ 2: 1] = adder_op_b[ 1: 0];
-    adder_in_b[    3] = 1'b0;
-    adder_in_b[ 5: 4] = adder_op_b[ 3: 2];
-    adder_in_b[    6] = 1'b0;
-    adder_in_b[ 8: 7] = adder_op_b[ 5: 4];
+    adder_in_b[ 8: 1] = adder_op_b[ 7: 0];
     adder_in_b[    9] = 1'b0;
-    adder_in_b[11:10] = adder_op_b[ 7: 6];
-    adder_in_b[   12] = 1'b0;
-    adder_in_b[14:13] = adder_op_b[ 9: 8];
-    adder_in_b[   15] = 1'b0;
-    adder_in_b[17:16] = adder_op_b[11:10];
+    adder_in_b[17:10] = adder_op_b[15: 8];
     adder_in_b[   18] = 1'b0;
-    adder_in_b[20:19] = adder_op_b[13:12];
-    adder_in_b[   21] = 1'b0;
-    adder_in_b[23:22] = adder_op_b[15:14];
-    adder_in_b[   24] = 1'b0;
-    adder_in_b[26:25] = adder_op_b[17:16];
+    adder_in_b[26:19] = adder_op_b[23:16];
     adder_in_b[   27] = 1'b0;
-    adder_in_b[29:28]  = adder_op_b[19:18];
-    adder_in_b[   30] = 1'b0;
-    adder_in_b[32:31] = adder_op_b[21:20];
-    adder_in_b[   33] = 1'b0;
-    adder_in_b[35:34] = adder_op_b[23:22];
-    adder_in_b[   36] = 1'b0;
-    adder_in_b[38:37] = adder_op_b[25:24];
-    adder_in_b[   39] = 1'b0;
-    adder_in_b[41:40] = adder_op_b[27:26];
-    adder_in_b[   42] = 1'b0;
-    adder_in_b[44:43] = adder_op_b[29:28];
-    adder_in_b[   45] = 1'b0;
-    adder_in_b[47:46] = adder_op_b[31:30];
+    adder_in_b[35:28] = adder_op_b[31:24];
 
     if (adder_op_b_negate || (operator_i == ALU_ABS || operator_i == ALU_CLIP)) begin
       // special case for subtractions and absolute number calculations
       adder_in_b[0] = 1'b1;
 
-      if (ivec_op_i) begin
-
       case (vector_mode_i)
         VEC_MODE16: begin
-          adder_in_b[24] = 1'b1;
+          adder_in_b[18] = 1'b1;
         end
 
         VEC_MODE8: begin
-          adder_in_b[12] = 1'b1;
-          adder_in_b[24] = 1'b1;
-          adder_in_b[36] = 1'b1;
-        end
-
-        VEC_MODE4: begin
-          adder_in_b[ 6] = 1'b1;
-          adder_in_b[12] = 1'b1;
+          adder_in_b[ 9] = 1'b1;
           adder_in_b[18] = 1'b1;
-          adder_in_b[24] = 1'b1;
-          adder_in_b[30] = 1'b1;
-          adder_in_b[36] = 1'b1;
-          adder_in_b[42] = 1'b1;
-        end
-
-        VEC_MODE2: begin
-          adder_in_b[ 3]   = 1'b1;
-          adder_in_b[ 6]   = 1'b1;
-          adder_in_b[ 9]   = 1'b1;
-          adder_in_b[12]   = 1'b1;
-          adder_in_b[15]   = 1'b1;
-          adder_in_b[18]   = 1'b1;
-          adder_in_b[21]   = 1'b1;
-          adder_in_b[24]   = 1'b1;
-          adder_in_b[27]   = 1'b1;
-          adder_in_b[30]   = 1'b1;
-          adder_in_b[33]   = 1'b1;
-          adder_in_b[36]   = 1'b1;
-          adder_in_b[39]   = 1'b1;
-          adder_in_b[42]   = 1'b1;
-          adder_in_b[45]   = 1'b1;
+          adder_in_b[27] = 1'b1;
         end
       endcase
 
-      end // if (ivec_op_i)      
-
     end else begin
       // take care of partitioning the adder for the addition case
-
-      adder_in_a[ 0] = 1'b0;
-
-      if(ivec_op_i) begin
-
       case (vector_mode_i)
         VEC_MODE16: begin
-          adder_in_a[24] = 1'b0;
+          adder_in_a[18] = 1'b0;
         end
 
         VEC_MODE8: begin
-          adder_in_a[12] = 1'b0;
-          adder_in_a[24] = 1'b0;
-          adder_in_a[36] = 1'b0;
-        end
-
-        VEC_MODE4: begin
-          adder_in_a[ 6] = 1'b0;
-          adder_in_a[12] = 1'b0;
+          adder_in_a[ 9] = 1'b0;
           adder_in_a[18] = 1'b0;
-          adder_in_a[24] = 1'b0;
-          adder_in_a[30] = 1'b0;
-          adder_in_a[36] = 1'b0;
-          adder_in_a[42] = 1'b0;
+          adder_in_a[27] = 1'b0;
         end
-
-        VEC_MODE2: begin
-          adder_in_a[ 3]   = 1'b0;
-          adder_in_a[ 6]   = 1'b0;
-          adder_in_a[ 9]   = 1'b0;
-          adder_in_a[12]   = 1'b0;
-          adder_in_a[15]   = 1'b0;
-          adder_in_a[18]   = 1'b0;
-          adder_in_a[21]   = 1'b0;
-          adder_in_a[24]   = 1'b0;
-          adder_in_a[27]   = 1'b0;
-          adder_in_a[30]   = 1'b0;
-          adder_in_a[33]   = 1'b0;
-          adder_in_a[36]   = 1'b0;
-          adder_in_a[30]   = 1'b0;
-          adder_in_a[42]   = 1'b0;
-          adder_in_a[45]   = 1'b0;
-        end
-      endcase // case (vector_mode_i)
-
-      end // if (ivec_op_i)      
-
+      endcase
     end
   end
 
   // actual adder
   assign adder_result_expanded = $signed(adder_in_a) + $signed(adder_in_b);
-
-  assign adder_result = {adder_result_expanded[47:46],
-                         adder_result_expanded[44:43],
-                         adder_result_expanded[41:40],
-                         adder_result_expanded[38:37],
-                         adder_result_expanded[35:34],
-                         adder_result_expanded[32:31],
-                         adder_result_expanded[29:28],
-                         adder_result_expanded[26:25],
-                         adder_result_expanded[23:22],
-                         adder_result_expanded[20:19],
-                         adder_result_expanded[17:16],
-                         adder_result_expanded[14:13],
-                         adder_result_expanded[11:10],
-                         adder_result_expanded[ 8: 7],
-                         adder_result_expanded[ 5: 4],
-                         adder_result_expanded[ 2: 1]};
+  assign adder_result = {adder_result_expanded[35:28],
+                         adder_result_expanded[26:19],
+                         adder_result_expanded[17:10],
+                         adder_result_expanded[8:1]};
 
 
   // normalization stage
@@ -341,19 +208,12 @@ module riscv_alu
   logic [31:0] shift_left_result;
   logic [15:0] clpx_shift_ex;
 
-  
-  logic [31:0] bmask_b_norm;
-
   // shifter is also used for preparing operand for division
   assign shift_amt = div_valid ? div_shift : operand_b_i;
 
   // by reversing the bits of the input, we also have to reverse the order of shift amounts
   always_comb
   begin
-    shift_amt_left[31: 0] = shift_amt[31: 0];
-
-    if (ivec_op_i) begin
-
     case(vector_mode_i)
       VEC_MODE16:
       begin
@@ -369,42 +229,11 @@ module riscv_alu
         shift_amt_left[31:24] = shift_amt[ 7: 0];
       end
 
-
-      VEC_MODE4:
+      default: // VEC_MODE32
       begin
-        shift_amt_left[ 3: 0] = shift_amt[31:28];
-        shift_amt_left[ 7: 4] = shift_amt[27:24];
-        shift_amt_left[11: 8] = shift_amt[23:20];
-        shift_amt_left[15:12] = shift_amt[19:16];
-        shift_amt_left[19:16] = shift_amt[15:12];
-        shift_amt_left[23:20] = shift_amt[11: 8];
-        shift_amt_left[27:24] = shift_amt[ 7: 4];
-        shift_amt_left[31:28] = shift_amt[ 3: 0];
+        shift_amt_left[31: 0] = shift_amt[31: 0];
       end
-
-      VEC_MODE2:
-      begin
-        shift_amt_left[ 1: 0] = shift_amt[31:30];
-        shift_amt_left[ 3: 2] = shift_amt[29:28];
-        shift_amt_left[ 5: 4] = shift_amt[27:26];
-        shift_amt_left[ 7: 6] = shift_amt[25:24];
-        shift_amt_left[ 9: 8] = shift_amt[23:22];
-        shift_amt_left[11:10] = shift_amt[21:20];
-        shift_amt_left[13:12] = shift_amt[19:18];
-        shift_amt_left[15:14] = shift_amt[17:16];
-        shift_amt_left[17:16] = shift_amt[15:14];
-        shift_amt_left[19:18] = shift_amt[13:12];
-        shift_amt_left[21:20] = shift_amt[11:10];
-        shift_amt_left[23:22] = shift_amt[ 9: 8];
-        shift_amt_left[25:24] = shift_amt[ 7: 6];
-        shift_amt_left[27:26] = shift_amt[ 5: 4];
-        shift_amt_left[29:28] = shift_amt[ 3: 2];
-        shift_amt_left[31:30] = shift_amt[ 1: 0];
-      end
-    endcase // case (vector_mode_i)
-
-    end // if (vec_op_i)
-
+    endcase
   end
 
   // ALU_FL1 and ALU_CBL are used for the bit counting ops later
@@ -414,13 +243,13 @@ module riscv_alu
                       (operator_i == ALU_REM) || (operator_i == ALU_REMU) ||
                       (operator_i == ALU_BREV);
 
-  assign shift_use_round = (operator_i == ALU_ADD)   || (operator_i == ALU_SUB || operator_i == ALU_ADD4)   ||
+  assign shift_use_round = (operator_i == ALU_ADD)   || (operator_i == ALU_SUB)   ||
                            (operator_i == ALU_ADDR)  || (operator_i == ALU_SUBR)  ||
                            (operator_i == ALU_ADDU)  || (operator_i == ALU_SUBU)  ||
                            (operator_i == ALU_ADDUR) || (operator_i == ALU_SUBUR);
 
   assign shift_arithmetic = (operator_i == ALU_SRA)  || (operator_i == ALU_BEXT) ||
-                            (operator_i == ALU_ADD)  || (operator_i == ALU_SUB || operator_i == ALU_ADD4)  ||
+                            (operator_i == ALU_ADD)  || (operator_i == ALU_SUB)  ||
                             (operator_i == ALU_ADDR) || (operator_i == ALU_SUBR);
 
   // choose the bit reversed or the normal input for shift operand a
@@ -429,22 +258,7 @@ module riscv_alu
   assign shift_amt_int = shift_use_round ? shift_amt_norm :
                           (shift_left ? shift_amt_left : shift_amt);
 
-
-  always_comb begin    
-  bmask_b_norm = {4{3'b000, bmask_b_i}};
-
-    if (ivec_op_i) begin
-
-  case(vector_mode_i)
-    VEC_MODE4:     bmask_b_norm = {8{2'b00, bmask_b_i[1:0]}};
-    VEC_MODE2:     bmask_b_norm = {16{1'b0, bmask_b_i[0]}};
-  endcase // case (vector_mode_i)
-
-    end
-
-  end
-
-  assign shift_amt_norm = is_clpx_i ? {clpx_shift_ex,clpx_shift_ex} : bmask_b_norm; //{4{3'b000, bmask_b_i}}
+  assign shift_amt_norm = is_clpx_i ? {clpx_shift_ex,clpx_shift_ex} : {4{3'b000, bmask_b_i}};
 
   assign clpx_shift_ex  = $unsigned(clpx_shift_i);
 
@@ -455,11 +269,6 @@ module riscv_alu
 
   always_comb
   begin
-
-    shift_right_result = shift_op_a_32 >> shift_amt_int[4:0];
-
-    if (ivec_op_i) begin
-
     case(vector_mode_i)
       VEC_MODE16:
       begin
@@ -475,40 +284,11 @@ module riscv_alu
           shift_right_result[ 7: 0] = $signed( {shift_arithmetic & shift_op_a[ 7], shift_op_a[ 7: 0] }) >>> shift_amt_int[ 2: 0];
       end
 
-      VEC_MODE4:
+      default: // VEC_MODE32
       begin
-          shift_right_result[31:28] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[31:28] }) >>> shift_amt_int[29:28];
-          shift_right_result[27:24] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[27:24] }) >>> shift_amt_int[25:24];
-          shift_right_result[23:20] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[23:20] }) >>> shift_amt_int[21:20];
-          shift_right_result[19:16] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[19:16] }) >>> shift_amt_int[17:16];
-          shift_right_result[15:12] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[15:12] }) >>> shift_amt_int[13:12];
-          shift_right_result[11: 8] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[11: 8] }) >>> shift_amt_int[ 9: 8];
-          shift_right_result[ 7: 4] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 7: 4] }) >>> shift_amt_int[ 5: 4];
-          shift_right_result[ 3: 0] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 3: 0] }) >>> shift_amt_int[ 1: 0];
-      end
-      VEC_MODE2:
-      begin
-          shift_right_result[31:30] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[31:30] }) >>> shift_amt_int[30];
-          shift_right_result[29:28] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[29:28] }) >>> shift_amt_int[28];
-          shift_right_result[27:26] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[27:26] }) >>> shift_amt_int[26];
-          shift_right_result[25:24] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[25:24] }) >>> shift_amt_int[24];
-          shift_right_result[23:22] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[23:22] }) >>> shift_amt_int[22];
-          shift_right_result[21:20] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[21:20] }) >>> shift_amt_int[20];
-          shift_right_result[19:18] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[19:18] }) >>> shift_amt_int[18];
-          shift_right_result[17:16] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[17:16] }) >>> shift_amt_int[16];
-          shift_right_result[15:14] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[15:14] }) >>> shift_amt_int[14];
-          shift_right_result[13:12] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[13:12] }) >>> shift_amt_int[12];
-          shift_right_result[11:10] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[11:10] }) >>> shift_amt_int[10];
-          shift_right_result[ 9: 8] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 9: 8] }) >>> shift_amt_int[ 8];
-          shift_right_result[ 7: 6] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 7: 6] }) >>> shift_amt_int[ 6];
-          shift_right_result[ 5: 4] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 5: 4] }) >>> shift_amt_int[ 4];
-          shift_right_result[ 3: 2] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 3: 2] }) >>> shift_amt_int[ 2];
-          shift_right_result[ 1: 0] = $signed( {shift_arithmetic & shift_op_a[31], shift_op_a[ 1: 0] }) >>> shift_amt_int[ 0];
+          shift_right_result = shift_op_a_32 >> shift_amt_int[4:0];
       end
     endcase; // case (vec_mode_i)
-
-    end // if (ivec_op_i)
-
   end
 
   // bit reverse the shift_right_result for left shifts
@@ -532,21 +312,33 @@ module riscv_alu
   //                                                              //
   //////////////////////////////////////////////////////////////////
 
-
-  logic [15:0] is_equal;
-  logic [15:0] is_greater;     // handles both signed and unsigned forms
-  logic [15:0] f_is_greater;   // for floats, only signed and *no vectors*,
+  logic [3:0] is_equal;
+  logic [3:0] is_greater;     // handles both signed and unsigned forms
+  logic [3:0] f_is_greater;   // for floats, only signed and *no vectors*,
                               // inverted for two negative numbers
 
-  // 2-bit vector comparisons, basic building blocks
-  // extended from previous version for support to nibble and crumble operands
-  logic [15:0] cmp_signed;
-  logic [15:0] is_equal_vec;
-  logic [15:0] is_greater_vec;
+  // 8-bit vector comparisons, basic building blocks
+  logic [3:0]  cmp_signed;
+  logic [3:0]  is_equal_vec;
+  logic [3:0]  is_greater_vec;
+  logic [31:0] operand_b_eq;
+  logic        is_equal_clip;
+
+
+  //second == comparator for CLIP instructions
+  always_comb
+  begin
+    operand_b_eq = operand_b_neg;
+    if(operator_i == ALU_CLIPU)
+      operand_b_eq = '0;
+    else
+      operand_b_eq = operand_b_neg;
+  end
+  assign is_equal_clip = operand_a_i == operand_b_eq;
 
   always_comb
   begin
-    cmp_signed = 16'b0;
+    cmp_signed = 4'b0;
 
     unique case (operator_i)
       ALU_GTS,
@@ -564,19 +356,11 @@ module riscv_alu
       ALU_FLT,
       ALU_FMAX,
       ALU_FMIN: begin
-        cmp_signed[15:0] = 16'h8000;
-
-        if (ivec_op_i) begin
-
         case (vector_mode_i)
-          VEC_MODE2:  cmp_signed[15:0] = 16'hFFFF;
-          VEC_MODE4:  cmp_signed[15:0] = 16'hAAAA;
-          VEC_MODE8:  cmp_signed[15:0] = 16'h8888;
-          VEC_MODE16: cmp_signed[15:0] = 16'h8080;          
-        endcase // case (vector_mode_i)
-
-        end
-
+          VEC_MODE8:  cmp_signed[3:0] = 4'b1111;
+          VEC_MODE16: cmp_signed[3:0] = 4'b1010;
+          default:     cmp_signed[3:0] = 4'b1000;
+        endcase
       end
 
       default:;
@@ -587,12 +371,12 @@ module riscv_alu
   // comparison is done signed or unsigned
   genvar i;
   generate
-    for(i = 0; i < 16; i++)
+    for(i = 0; i < 4; i++)
     begin
-      assign is_equal_vec[i]   = (operand_a_i[2*i+1:2*i] == operand_b_i[2*i+1:i*2]);
-      assign is_greater_vec[i] = $signed({operand_a_i[2*i+1] & cmp_signed[i], operand_a_i[2*i+1:2*i]})
+      assign is_equal_vec[i]   = (operand_a_i[8*i+7:8*i] == operand_b_i[8*i+7:i*8]);
+      assign is_greater_vec[i] = $signed({operand_a_i[8*i+7] & cmp_signed[i], operand_a_i[8*i+7:8*i]})
                                   >
-                                 $signed({operand_b_i[2*i+1] & cmp_signed[i], operand_b_i[2*i+1:i*2]});
+                                 $signed({operand_b_i[8*i+7] & cmp_signed[i], operand_b_i[8*i+7:i*8]});
     end
   endgenerate
 
@@ -601,107 +385,44 @@ module riscv_alu
   always_comb
   begin
     // 32-bit mode
-    logic [15:0] temp;
-    temp[0] = is_equal_vec[1] & is_greater_vec[0];
-    for(int j=1; j<15; j++ ) begin
-      temp[j] = (temp[j-1] | is_greater_vec[j] )& is_equal_vec[j+1];
-    end
-    temp[15] = temp[14] | is_greater_vec[15];
-    is_equal[15: 0]    = {16{& is_equal_vec}};
-    is_greater[15: 0]  = {16{temp[15]}};
-
-
-    if (ivec_op_i) begin
+    is_equal[3:0]   = {4{is_equal_vec[3] & is_equal_vec[2] & is_equal_vec[1] & is_equal_vec[0]}};
+    is_greater[3:0] = {4{is_greater_vec[3] | (is_equal_vec[3] & (is_greater_vec[2]
+                                            | (is_equal_vec[2] & (is_greater_vec[1]
+                                             | (is_equal_vec[1] & (is_greater_vec[0]))))))}};
 
     case(vector_mode_i)
       VEC_MODE16:
       begin
-        temp[0] = is_greater_vec[0] & is_equal_vec[1];
-        temp[8] = is_greater_vec[8] & is_equal_vec[9];
-        for(int j=1; j<7; j++) begin
-          temp[j]   = (temp[j-1] | is_greater_vec[j] ) & is_equal_vec[j+1];
-          temp[j+8] = (temp[j-1 + 8] | is_greater_vec[j + 8] ) & is_equal_vec[j+1+8];
-        end
-
-        temp[7] =  temp[6] | is_greater_vec[7];
-        temp[15] = temp[14] | is_greater_vec[15];
-        is_equal  [ 7: 0]  = {8{ & is_equal_vec[ 7: 0]}};
-        is_equal  [15: 8]  = {8{ & is_equal_vec[15: 8]}};
-        is_greater[ 7: 0]  = {8{temp[7]}};
-        is_greater[15: 8]  = {8{temp[15]}};
+        is_equal[1:0]   = {2{is_equal_vec[0]   & is_equal_vec[1]}};
+        is_equal[3:2]   = {2{is_equal_vec[2]   & is_equal_vec[3]}};
+        is_greater[1:0] = {2{is_greater_vec[1] | (is_equal_vec[1] & is_greater_vec[0])}};
+        is_greater[3:2] = {2{is_greater_vec[3] | (is_equal_vec[3] & is_greater_vec[2])}};
       end
 
       VEC_MODE8:
       begin
-
-        temp[ 0]  = is_greater_vec[0] & is_equal_vec[1];
-        temp[ 4]  = is_greater_vec[4] & is_equal_vec[5];
-        temp[ 8]  = is_greater_vec[8] & is_equal_vec[9];
-        temp[12] = is_greater_vec[12] & is_equal_vec[13];
-
-        for(int j=1; j<3; j++) begin
-          temp[ j]   = (temp[j-1] |is_greater_vec[j]) & is_equal_vec[j+1];
-          temp[j+4]  = (temp[j -1 +  4] | is_greater_vec[j+4])  & is_equal_vec[j + 1 +  4];
-          temp[j+8]  = (temp[j -1 +  8] | is_greater_vec[j+8])  & is_equal_vec[j + 1 +  8];
-          temp[j+12] = (temp[j -1 + 12] | is_greater_vec[j+12]) & is_equal_vec[j + 1 + 12];
-        end
-
-        temp[3] = temp[2] | is_greater_vec[3];
-        temp[7] = temp[6] | is_greater_vec[7];
-        temp[11] = temp[10] | is_greater_vec[11];
-        temp[15] = temp[14] | is_greater_vec[15];
-
-        is_equal[ 3: 0] = {4{ & is_equal_vec[ 3: 0]}};
-        is_equal[ 7: 4] = {4{ & is_equal_vec[ 7: 4]}};
-        is_equal[11: 8] = {4{ & is_equal_vec[11: 8]}};
-        is_equal[15:12] = {4{ & is_equal_vec[15:12]}};
-
-        is_greater[ 3: 0]  = {4{temp[3]}};
-        is_greater[ 7: 4]  = {4{temp[7]}};
-        is_greater[11: 8]  = {4{temp[11]}};
-        is_greater[15:12]  = {4{temp[15]}};
+        is_equal[3:0]   = is_equal_vec[3:0];
+        is_greater[3:0] = is_greater_vec[3:0];
       end
 
-      VEC_MODE4: begin
-        is_greater[ 1: 0] = {2{is_greater_vec[1] | (is_equal_vec[1] & is_greater_vec[0])}};
-        is_greater[ 3: 2] = {2{is_greater_vec[3] | (is_equal_vec[3] & is_greater_vec[2])}};
-        is_greater[ 5: 4] = {2{is_greater_vec[5] | (is_equal_vec[5] & is_greater_vec[4])}};
-        is_greater[ 7: 6] = {2{is_greater_vec[7] | (is_equal_vec[7] & is_greater_vec[6])}};
-        is_greater[ 9: 8] = {2{is_greater_vec[9] | (is_equal_vec[9] & is_greater_vec[8])}};
-        is_greater[11:10] = {2{is_greater_vec[11] | (is_equal_vec[11] & is_greater_vec[10])}};
-        is_greater[13:12] = {2{is_greater_vec[13] | (is_equal_vec[13] & is_greater_vec[12])}};
-        is_greater[15:14] = {2{is_greater_vec[15] | (is_equal_vec[15] & is_greater_vec[14])}};
-
-        for(int j=0; j<8; j++) begin
-          is_equal[2*j +: 1] = {2{is_equal_vec[2*j+1] & is_equal_vec[2*j]}};
-        end
-      end
-
-      VEC_MODE2: begin
-        is_equal  [15: 0] = is_equal_vec[15: 0];
-        is_greater[15: 0] = is_greater_vec[15: 0];
-      end
-    endcase // case (vector_mode_i)
-
-    end // if (ivec_op_i)
-
+      default:; // see default assignment
+    endcase
   end
 
   // generate the floating point greater signal, inverted for two negative numbers
   // (but not for identical numbers)
-  // the floating point comparison here has to be tested!
-  assign f_is_greater[15:0] = {16{is_greater[15] ^ (operand_a_i[31] & operand_b_i[31] & !is_equal[15])}};
+  assign f_is_greater[3:0] = {4{is_greater[3] ^ (operand_a_i[31] & operand_b_i[31] & !is_equal[3])}};
 
   // generate comparison result
-  logic [15:0] cmp_result;
+  logic [3:0] cmp_result;
   logic       f_is_qnan;
   logic       f_is_snan;
-  logic [15:0] f_is_nan;
+  logic [3:0] f_is_nan;
 
   always_comb
   begin
     cmp_result = is_equal;
-    f_is_nan   = {16{(f_is_qnan | f_is_snan)}};
+    f_is_nan   = {4{(f_is_qnan | f_is_snan)}};
     unique case (operator_i)
       ALU_EQ:            cmp_result = is_equal;
       ALU_NE:            cmp_result = ~is_equal;
@@ -720,14 +441,13 @@ module riscv_alu
     endcase
   end
 
-
-  assign comparison_result_o = cmp_result[15];
+  assign comparison_result_o = cmp_result[3];
 
 
   // min/max/abs handling
   logic [31:0] result_minmax;
   logic [31:0] fp_canonical_nan;
-  logic [15:0] sel_minmax;
+  logic [ 3:0] sel_minmax;
   logic        do_min;
   logic        minmax_is_fp_special;
   logic [31:0] minmax_b;
@@ -738,19 +458,12 @@ module riscv_alu
                     (operator_i == ALU_CLIP) || (operator_i == ALU_CLIPU) ||
                     (operator_i == ALU_FMIN);
 
+  assign sel_minmax[3:0]      = ((operator_i == ALU_FMIN || operator_i == ALU_FMAX) ? f_is_greater : is_greater) ^ {4{do_min}};
 
-  assign sel_minmax[15:0]      = ((operator_i == ALU_FMIN || operator_i == ALU_FMAX) ? f_is_greater : is_greater) ^ {16{do_min}};
-
-
-  generate
-    for(i=0; i< 16; i++) begin
-      assign result_minmax[2*i +: 2] = (sel_minmax[i] == 1'b1) ? operand_a_i[ 2*i+ 1: 2*i] : minmax_b[ 2*i+1 : 2*i];
-      end
-  endgenerate
-  //assign result_minmax[31:24] = (sel_minmax[3] == 1'b1) ? operand_a_i[31:24] : minmax_b[31:24];
-  //assign result_minmax[23:16] = (sel_minmax[2] == 1'b1) ? operand_a_i[23:16] : minmax_b[23:16];
-  //assign result_minmax[15: 8] = (sel_minmax[1] == 1'b1) ? operand_a_i[15: 8] : minmax_b[15: 8];
-  //assign result_minmax[ 7: 0] = (sel_minmax[0] == 1'b1) ? operand_a_i[ 7: 0] : minmax_b[ 7: 0];
+  assign result_minmax[31:24] = (sel_minmax[3] == 1'b1) ? operand_a_i[31:24] : minmax_b[31:24];
+  assign result_minmax[23:16] = (sel_minmax[2] == 1'b1) ? operand_a_i[23:16] : minmax_b[23:16];
+  assign result_minmax[15: 8] = (sel_minmax[1] == 1'b1) ? operand_a_i[15: 8] : minmax_b[15: 8];
+  assign result_minmax[ 7: 0] = (sel_minmax[0] == 1'b1) ? operand_a_i[ 7: 0] : minmax_b[ 7: 0];
 
   //////////////////////////////////////////////////
   // Float classification
@@ -844,13 +557,26 @@ module riscv_alu
   //////////////////////////////////////////////////
   logic [31:0] clip_result;        // result of clip and clip
 
-  logic        clip_is_lower_neg;  // only signed comparison; used for clip
-  logic        clip_is_lower_u;    // only signed comparison; used for clipu, checks for negative number
+  always_comb
+  begin
+    clip_result = result_minmax;
+    if(operator_i == ALU_CLIPU) begin
+      if(operand_a_i[31] || is_equal_clip) begin
+        clip_result = '0;
+      end else begin
+        clip_result = result_minmax;
+      end
+    end else begin
+      //CLIP
+      if(adder_result_expanded[36] || is_equal_clip) begin
+        clip_result = operand_b_neg;
+      end else begin
+        clip_result = result_minmax;
+      end
+    end
 
-  assign clip_is_lower_neg = adder_result_expanded[47];
-  assign clip_is_lower_u   = (operator_i == ALU_CLIPU) && operand_a_i[31];
+  end
 
-  assign clip_result       = is_greater ? result_minmax: (clip_is_lower_u ? '0 : (clip_is_lower_neg ? operand_b_neg : result_minmax));
   //////////////////////////////////////////////////
   //  ____  _   _ _   _ _____ _____ _     _____   //
   // / ___|| | | | | | |  ___|  ___| |   | ____|  //
@@ -861,7 +587,7 @@ module riscv_alu
   //////////////////////////////////////////////////
 
   logic [ 3: 0][1:0] shuffle_byte_sel; // select byte in register: 31:24, 23:16, 15:8, 7:0
-  logic [ 3: 0]      shuffle_reg_sel;  // select regiter: rD/rS2 or rS1
+  logic [ 3: 0]      shuffle_reg_sel;  // select register: rD/rS2 or rS1
   logic [ 1: 0]      shuffle_reg1_sel; // select register rD or rS2 for next stage
   logic [ 1: 0]      shuffle_reg0_sel;
   logic [ 3: 0]      shuffle_through;
@@ -1354,7 +1080,7 @@ module riscv_alu
       ALU_XOR:  result_o = operand_a_i ^ operand_b_i;
 
       // Shift Operations
-      ALU_ADD, ALU_ADDR, ALU_ADDU, ALU_ADDUR,  ALU_ADD4,
+      ALU_ADD, ALU_ADDR, ALU_ADDU, ALU_ADDUR,
       ALU_SUB, ALU_SUBR, ALU_SUBU, ALU_SUBUR,
       ALU_SLL,
       ALU_SRL, ALU_SRA,
@@ -1394,13 +1120,10 @@ module riscv_alu
       ALU_LTU,   ALU_LEU,
       ALU_GTS,   ALU_GES,
       ALU_LTS,   ALU_LES: begin
-         for (int j=0; j<16; j++) begin
-            result_o[2*j +: 2] = {2{cmp_result[j]}};
-            end
-          //result_o[31:24] = {8{cmp_result[3]}};
-          //result_o[23:16] = {8{cmp_result[2]}};
-          //result_o[15: 8] = {8{cmp_result[1]}};
-          //result_o[ 7: 0] = {8{cmp_result[0]}};
+          result_o[31:24] = {8{cmp_result[3]}};
+          result_o[23:16] = {8{cmp_result[2]}};
+          result_o[15: 8] = {8{cmp_result[1]}};
+          result_o[ 7: 0] = {8{cmp_result[0]}};
        end
       // Non-vector comparisons
       ALU_FEQ,   ALU_FLT,
@@ -1429,7 +1152,7 @@ module riscv_alu
 
 endmodule
 
-module alu_ff
+module alu_ff import riscv_defines::*;
 #(
   parameter LEN = 32
 )
@@ -1505,7 +1228,7 @@ module alu_ff
 endmodule
 
 // count the number of '1's in a word
-module alu_popcnt
+module alu_popcnt import riscv_defines::*;
 (
   input  logic [31:0]  in_i,
   output logic [5: 0]  result_o

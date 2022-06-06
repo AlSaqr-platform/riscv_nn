@@ -25,10 +25,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-
-import riscv_defines::*;
-
-module riscv_if_stage
+module riscv_if_stage import riscv_defines::*;
 #(
   parameter N_HWLP          = 2,
   parameter RDATA_WIDTH     = 32,
@@ -205,7 +202,7 @@ module riscv_if_stage
         .clk               ( clk                         ),
         .rst_n             ( rst_n                       ),
 
-        .req_i             ( req_i                       ),
+        .req_i             ( 1'b1                        ),
 
         .branch_i          ( branch_req                  ),
         .addr_i            ( {fetch_addr_n[31:1], 1'b0}  ),

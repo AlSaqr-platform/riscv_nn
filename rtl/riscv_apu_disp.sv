@@ -24,7 +24,7 @@
 
 `include "apu_macros.sv"
 
-module riscv_apu_disp (
+module riscv_apu_disp import apu_core_package::*; (
   input logic                           clk_i,
   input logic                           rst_ni,
 
@@ -45,7 +45,6 @@ module riscv_apu_disp (
   output logic                          stall_o,
 
   // dependency checks
-  input  logic                          is_decoding_i,
   input  logic [2:0][5:0]               read_regs_i,
   input  logic [2:0]                    read_regs_valid_i,
   output logic                          read_dep_o,
@@ -84,10 +83,10 @@ module riscv_apu_disp (
   logic       read_dep_req,   read_dep_inflight,   read_dep_waiting;
   logic       write_dep_req,  write_dep_inflight,  write_dep_waiting;
 
-  logic stall_type, stall_nack;
+  logic stall_full, stall_type, stall_nack;
 
   // Generate request signal; do not generate request if stalled unless it's a nack stall
-  assign valid_req    = enable_i & !(stall_type);
+  assign valid_req    = enable_i & !(stall_full | stall_type);
   assign addr_req     = apu_waddr_i;
 
   assign req_accepted = valid_req & apu_master_gnt_i;
@@ -190,19 +189,20 @@ module riscv_apu_disp (
   assign write_dep_inflight = |write_deps_inflight & valid_inflight & !returned_inflight;
   assign write_dep_waiting  = |write_deps_waiting  & valid_waiting  & !returned_waiting;
 
-  assign read_dep_o         = (read_dep_req  | read_dep_inflight  | read_dep_waiting)  & is_decoding_i;
-  assign write_dep_o        = (write_dep_req | write_dep_inflight | write_dep_waiting) & is_decoding_i;
+  assign read_dep_o         = read_dep_req  | read_dep_inflight  | read_dep_waiting;
+  assign write_dep_o        = write_dep_req | write_dep_inflight | write_dep_waiting;
 
   //
   // Stall signals
   //
   // Stall if we cannot store any more outstanding requests
+  assign stall_full      = valid_inflight & valid_waiting;
   // Stall if there is a type conflict. if apu is active we can only issue requests with a larger or equal latency
   // than the latency of the inflight operation (apu_lat_i>=apu_lat). otherwise operations would overtake each other!
   // so we stall if: (apu_lat_i = 1 & apu_lat = 2/3) | (apu_lat_i = 2 & apu_lat = 3) | (apu_lat_i = 3 (multicycle))
-  assign stall_type      = enable_i  & active & ((apu_lat_i==2'h1) | ((apu_lat_i==2'h2) & (apu_lat==2'h3)) | (apu_lat  ==2'h0) | (apu_lat_i == 2'h0));
+  assign stall_type      = enable_i  & active & ((apu_lat_i==2'h1) | ((apu_lat_i==2'h2) & (apu_lat==2'h3)) | (apu_lat_i==2'h3));
   assign stall_nack      = valid_req & !apu_master_gnt_i;
-  assign stall_o         = stall_type | stall_nack;
+  assign stall_o         = stall_full | stall_type | stall_nack;
 
   //
   // Generate Apu_master request
@@ -232,7 +232,7 @@ module riscv_apu_disp (
   assign perf_type_o = stall_type;
   assign perf_cont_o = stall_nack;
 
-  assign apu_multicycle_o  =  (apu_lat == 2'h3 | ( apu_lat == 2'h0 & valid_inflight));
+  assign apu_multicycle_o  =  (apu_lat == 2'h3);
   assign apu_singlecycle_o = ~(valid_inflight | valid_waiting);
 
   //

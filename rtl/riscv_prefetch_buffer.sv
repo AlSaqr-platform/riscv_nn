@@ -176,6 +176,8 @@ module riscv_prefetch_buffer
             fifo_clear = 1'b1;
         end
       end
+
+
       HWLP_UNALIGNED_COMPRESSED: begin
         hwlp_branch  = 1'b1;
         hwlp_NS      = HWLP_FETCHING;

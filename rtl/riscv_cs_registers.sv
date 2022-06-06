@@ -26,16 +26,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import riscv_defines::*;
-`include "riscv_config.sv"
+`define ASIC_SYNTHESIS
 
-`ifndef PULP_FPGA_EMUL
- `ifdef SYNTHESIS
-  `define ASIC_SYNTHESIS
- `endif
-`endif
-
-module riscv_cs_registers
+module riscv_cs_registers import riscv_defines::*;
 #(
   parameter N_HWLP        = 2,
   parameter N_HWLP_BITS   = $clog2(N_HWLP),
@@ -44,128 +37,113 @@ module riscv_cs_registers
   parameter FPU           = 0,
   parameter PULP_SECURE   = 0,
   parameter USE_PMP       = 0,
+  parameter NUM_MHPMCOUNTERS = 2,
+  parameter SIM_COUNT_HPMEVENTS = 1'b0,
   parameter N_PMP_ENTRIES = 16
 )
 (
   // Clock and Reset
-  input logic                             clk,
-  input logic                             rst_n,
+  input  logic            clk,
+  input  logic            rst_n,
 
   // Core and Cluster ID
-  input logic [3:0]                       core_id_i,
-  input logic [5:0]                       cluster_id_i,
-  output logic [23:0]                     mtvec_o,
-  output logic [23:0]                     utvec_o,
+  input  logic  [3:0]     core_id_i,
+  input  logic  [5:0]     cluster_id_i,
+  output logic [23:0]     mtvec_o,
+  output logic [23:0]     utvec_o,
 
   // Used for boot address
-  input logic [30:0]                      boot_addr_i,
+  input  logic [30:0]     boot_addr_i,
 
   // Interface to registers (SRAM like)
-  input logic                             csr_access_i,
-  input logic [11:0]                      csr_addr_i,
-  input logic [31:0]                      csr_wdata_i,
-  input logic [1:0]                       csr_op_i,
-  output logic [31:0]                     csr_rdata_o,
+  input  logic            csr_access_i,
+  input  logic [11:0]     csr_addr_i,
+  input  logic [31:0]     csr_wdata_i,
+  input  logic  [1:0]     csr_op_i,
+  output logic [31:0]     csr_rdata_o,
 
-  // Additional write port used to write MACLOAD signals together with mixed-precision one when we're executing mixed-precision MACLOADs
-  input logic [11:0]                      csr_macl_addr_i,
-  input logic [31:0]                      csr_macl_wdata_i,
-  input logic [1:0]                       csr_macl_op_i,
-
-  output                                  ivec_mode_fmt ivec_fmt_o, //added for sb ivec : for now it's 2 bits(only int16 and int8)but it will need to be adjusted
-  output logic [NBITS_MIXED_CYCLES-1:0]   ivec_mixed_cycle_o, //added for sb ivec : output of counter of number of cycles for mixed precision operations
-  output logic [NBITS_MAX_KER-1:0]        ivec_skip_size_o, //added for sb ivec : used by mpc to know when to increase next cycle
-  output logic                            sb_legacy_o,      //added for sb : Legacy Mode
-
-  output logic [31:0]                     macl_a_address_o,  //added for status-based MACLOAD: current activation address
-  output logic [31:0]                     macl_w_address_o,  //added for status-based MACLOAD: curent weight address
-  output logic [31:0]                     macl_a_stride_o,   //added for status-based MACLOAD: regular activation increment  
-  output logic [31:0]                     macl_w_stride_o,   //added for status-based MACLOAD: regular weight increment
-  output logic [31:0]                     macl_a_rollback_o, //added for status-based MACLOAD: rollback activation increment
-  output logic [31:0]                     macl_w_rollback_o, //added for status-based MACLOAD: rollback weight increment
-  output logic [31:0]                     macl_a_skip_o,     //added for status-based MACLOAD: number of activation updates before rollback
-  output logic [31:0]                     macl_w_skip_o,     //added for status-based MACLOAD: number of weight update before rollback
-  output logic                            macl_a_rstn_o,     //added for status based MACLOAD: signal needed to reset counter when a_address is updated by the C code
-  output logic                            macl_w_rstn_o,     //added for status based MACLOAD: signal needed to reset counter when a_address is updated by the C code 
-
-  output logic [2:0]                      frm_o,
-  output logic [C_PC-1:0]                 fprec_o,
-  input logic [C_FFLAG-1:0]               fflags_i,
-  input logic                             fflags_we_i,
+  output logic [2:0]         frm_o,
+  output logic [C_PC-1:0]    fprec_o,
+  input  logic [C_FFLAG-1:0] fflags_i,
+  input  logic               fflags_we_i,
 
   // Interrupts
-  output logic                            m_irq_enable_o,
-  output logic                            u_irq_enable_o,
+  output logic            m_irq_enable_o,
+  output logic            u_irq_enable_o,
 
   //csr_irq_sec_i is always 0 if PULP_SECURE is zero
-  input logic                             csr_irq_sec_i,
-  output logic                            sec_lvl_o,
-  output logic [31:0]                     mepc_o,
-  output logic [31:0]                     uepc_o,
+  input  logic            csr_irq_sec_i,
+  output logic            sec_lvl_o,
+  output logic [31:0]     mepc_o,
+  output logic [31:0]     uepc_o,
 
   // debug
-  input logic                             debug_mode_i,
-  input logic [2:0]                       debug_cause_i,
-  input logic                             debug_csr_save_i,
-  output logic [31:0]                     depc_o,
-  output logic                            debug_single_step_o,
-  output logic                            debug_ebreakm_o,
-  output logic                            debug_ebreaku_o,
+  input  logic            debug_mode_i,
+  input  logic  [2:0]     debug_cause_i,
+  input  logic            debug_csr_save_i,
+  output logic [31:0]     depc_o,
+  output logic            debug_single_step_o,
+  output logic            debug_ebreakm_o,
+  output logic            debug_ebreaku_o,
 
 
-  output logic [N_PMP_ENTRIES-1:0] [31:0] pmp_addr_o,
-  output logic [N_PMP_ENTRIES-1:0] [7:0]  pmp_cfg_o,
+  output logic  [N_PMP_ENTRIES-1:0] [31:0] pmp_addr_o,
+  output logic  [N_PMP_ENTRIES-1:0] [7:0]  pmp_cfg_o,
 
-  output                                  PrivLvl_t priv_lvl_o,
+  output PrivLvl_t        priv_lvl_o,
 
-  input logic [31:0]                      pc_if_i,
-  input logic [31:0]                      pc_id_i,
-  input logic [31:0]                      pc_ex_i,
+  input  logic [31:0]     pc_if_i,
+  input  logic [31:0]     pc_id_i,
+  input  logic [31:0]     pc_ex_i,
 
-  input logic                             csr_save_if_i,
-  input logic                             csr_save_id_i,
-  input logic                             csr_save_ex_i,
+  input  logic            csr_save_if_i,
+  input  logic            csr_save_id_i,
+  input  logic            csr_save_ex_i,
 
-  input logic                             csr_restore_mret_i,
-  input logic                             csr_restore_uret_i,
+  input  logic            csr_restore_mret_i,
+  input  logic            csr_restore_uret_i,
 
-  input logic                             csr_restore_dret_i,
+  input  logic            csr_restore_dret_i,
   //coming from controller
-  input logic [5:0]                       csr_cause_i,
+  input  logic [5:0]      csr_cause_i,
   //coming from controller
-  input logic                             csr_save_cause_i,
+  input  logic            csr_save_cause_i,
   // Hardware loops
-  input logic [N_HWLP-1:0] [31:0]         hwlp_start_i,
-  input logic [N_HWLP-1:0] [31:0]         hwlp_end_i,
-  input logic [N_HWLP-1:0] [31:0]         hwlp_cnt_i,
+  input  logic [N_HWLP-1:0] [31:0] hwlp_start_i,
+  input  logic [N_HWLP-1:0] [31:0] hwlp_end_i,
+  input  logic [N_HWLP-1:0] [31:0] hwlp_cnt_i,
 
-  output logic [31:0]                     hwlp_data_o,
-  output logic [N_HWLP_BITS-1:0]          hwlp_regid_o,
-  output logic [2:0]                      hwlp_we_o,
+  output logic [31:0]              hwlp_data_o,
+  output logic [N_HWLP_BITS-1:0]   hwlp_regid_o,
+  output logic [2:0]               hwlp_we_o,
+
+  // Stack Protection
+  output logic [31:0]     stack_base_o,
+  output logic [31:0]     stack_limit_o,
 
   // Performance Counters
-  input logic                             id_valid_i, // ID stage is done
-  input logic                             is_compressed_i, // compressed instruction in ID
-  input logic                             is_decoding_i, // controller is in DECODE state
+  input  logic                 id_valid_i,        // ID stage is done
+  input  logic                 is_compressed_i,   // compressed instruction in ID
+  input  logic                 is_decoding_i,     // controller is in DECODE state
 
-  input logic                             imiss_i, // instruction fetch
-  input logic                             pc_set_i, // pc was set to a new value
-  input logic                             jump_i, // jump instruction seen   (j, jr, jal, jalr)
-  input logic                             branch_i, // branch instruction seen (bf, bnf)
-  input logic                             branch_taken_i, // branch was taken
-  input logic                             ld_stall_i, // load use hazard
-  input logic                             jr_stall_i, // jump register use hazard
-  input logic                             pipeline_stall_i, // extra cycles from elw
+  input  logic                 imiss_i,           // instruction fetch
+  input  logic                 pc_set_i,          // pc was set to a new value
+  input  logic                 jump_i,            // jump instruction seen   (j, jr, jal, jalr)
+  input  logic                 branch_i,          // branch instruction seen (bf, bnf)
+  input  logic                 branch_taken_i,    // branch was taken
+  input  logic                 ld_stall_i,        // load use hazard
+  input  logic                 jr_stall_i,        // jump register use hazard
+  input  logic                 pipeline_stall_i,  // extra cycles from elw
 
-  input logic                             apu_typeconflict_i,
-  input logic                             apu_contention_i,
-  input logic                             apu_dep_i,
-  input logic                             apu_wb_i,
+  input  logic                 apu_typeconflict_i,
+  input  logic                 apu_contention_i,
+  input  logic                 apu_dep_i,
+  input  logic                 apu_wb_i,
 
-  input logic                             mem_load_i, // load from memory in this cycle
-  input logic                             mem_store_i, // store to memory in this cycle
+  input  logic                 mem_load_i,        // load from memory in this cycle
+  input  logic                 mem_store_i,       // store to memory in this cycle
 
-  input logic [N_EXT_CNT-1:0]             ext_counters_i
+  input  logic [N_EXT_CNT-1:0] ext_counters_i
 );
 
   localparam N_APU_CNT       = (APU==1) ? 4 : 0;
@@ -181,7 +159,8 @@ module riscv_cs_registers
 
 
 `ifdef ASIC_SYNTHESIS
-  localparam N_PERF_REGS     = 1;
+  localparam N_PERF_REGS     = 4;
+  localparam PERF_REG_ADDR_WIDTH = cf_math_pkg::idx_width(N_PERF_REGS);
 `else
   localparam N_PERF_REGS     = N_PERF_COUNTERS;
 `endif
@@ -195,7 +174,7 @@ module riscv_cs_registers
   `define MSTATUS_SPP_BITS        8
   `define MSTATUS_MPP_BITS    12:11
   `define MSTATUS_MPRV_BITS      17
-  
+
   // misa
   localparam logic [1:0] MXL = 2'd1; // M-XLEN: XLEN in M-Mode for RV32
   localparam logic [31:0] MISA_VALUE =
@@ -246,13 +225,6 @@ module riscv_cs_registers
       PrivLvl_t     prv;
   } Dcsr_t;
 
-`ifndef SYNTHESIS
-  initial
-  begin
-    $display("[CORE] Core settings: PULP_SECURE = %d, N_PMP_ENTRIES = %d, N_PMP_CFG %d",PULP_SECURE, N_PMP_ENTRIES, N_PMP_CFG);
-  end
-`endif
-
   typedef struct packed {
    logic  [MAX_N_PMP_ENTRIES-1:0] [31:0] pmpaddr;
    logic  [MAX_N_PMP_CFG-1:0]     [31:0] pmpcfg_packed;
@@ -268,26 +240,6 @@ module riscv_cs_registers
   logic [C_FFLAG-1:0]  fflags_q, fflags_n;
   logic [C_PC-1:0]     fprec_q, fprec_n;
 
-  logic csr_macl_we_int;
-  logic [31:0] csr_macl_wdata_int;
-
-  logic [C_FPNEW_FMTBITS-1:0] fpu_dst_fmt_q, fpu_dst_fmt_n, fpu_src_fmt_q, fpu_src_fmt_n; //aggiunta fpu_status_based
-  logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_q, fpu_int_fmt_n; //aggiunta sb fpu
-  ivec_mode_fmt                         ivec_fmt_q, ivec_fmt_n; //Added for sb ivec : needed for csr update logic
-  logic [NBITS_MIXED_CYCLES-1:0] ivec_mixed_cycle_q, ivec_mixed_cycle_n; //Added for sb ivec: counters for mixed precision operation
-  logic [NBITS_MAX_KER-1 : 0]    ivec_skip_size_q, ivec_skip_size_n; //added for sb ivec
-  logic                          sb_legacy_q, sb_legacy_n; // Added for sb: Legacy MODE
-
-  logic [31:0] macl_a_address_q, macl_a_address_n; //added for status-based MACLOAD
-  logic [31:0] macl_w_address_q, macl_w_address_n; //added for status-based MACLOAD
-  logic [31:0] macl_a_stride_q, macl_a_stride_n;   //added for status-based MACLOAD
-  logic [31:0] macl_w_stride_q, macl_w_stride_n;   //added for status-based MACLOAD
-  logic [31:0] macl_a_rollback_q, macl_a_rollback_n; //added for status-based MACLOAD
-  logic [31:0] macl_w_rollback_q, macl_w_rollback_n; //added for status-based MACLOAD
-  logic [31:0] macl_a_skip_q, macl_a_skip_n;       //added for status-based MACLOAD
-  logic [31:0] macl_w_skip_q, macl_w_skip_n;       //added for status-based MACLOAD
-
-
   // Interrupt control signals
   logic [31:0] mepc_q, mepc_n;
   logic [31:0] uepc_q, uepc_n;
@@ -301,6 +253,8 @@ module riscv_cs_registers
   Status_t mstatus_q, mstatus_n;
   logic [ 5:0] mcause_q, mcause_n;
   logic [ 5:0] ucause_q, ucause_n;
+  logic [31:0] stack_base_q, stack_base_n,
+               stack_size_q, stack_size_n;
   //not implemented yet
   logic [23:0] mtvec_n, mtvec_q;
   logic [23:0] utvec_n, utvec_q;
@@ -312,21 +266,22 @@ module riscv_cs_registers
   logic [MAX_N_PMP_ENTRIES-1:0] pmpaddr_we;
   logic [MAX_N_PMP_ENTRIES-1:0] pmpcfg_we;
 
-  // Performance Counter Signals
-  logic                          id_valid_q;
-  logic [N_PERF_COUNTERS-1:0]    PCCR_in;  // input signals for each counter category
-  logic [N_PERF_COUNTERS-1:0]    PCCR_inc, PCCR_inc_q; // should the counter be increased?
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Hardware Performance Monitor (HPM) Constants and Signals
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  localparam int unsigned NUM_INTERNAL_EVENTS = 15;
+  localparam int unsigned NUM_HPMEVENTS = NUM_INTERNAL_EVENTS + N_EXT_CNT;
+  localparam int unsigned HPM_EVENT_IDX_WIDTH = cf_math_pkg::idx_width(NUM_HPMEVENTS);
 
-  logic [N_PERF_REGS-1:0] [31:0] PCCR_q, PCCR_n; // performance counters counter register
-  logic [1:0]                    PCMR_n, PCMR_q; // mode register, controls saturation and global enable
-  logic [N_PERF_COUNTERS-1:0]    PCER_n, PCER_q; // selected counter input
+  logic [31:0]  mcounteren_d, mcounteren_q;
 
-  logic [31:0]                   perf_rdata;
-  logic [4:0]                    pccr_index;
-  logic                          pccr_all_sel;
-  logic                          is_pccr;
-  logic                          is_pcer;
-  logic                          is_pcmr;
+  logic [31:0]  mcountinhibit_d, mcountinhibit_q;
+
+  logic [31:0][31:0]  mhpmcounter_q;
+  logic [31:0]        mhpmcounter_increment,
+                      mhpmcounter_write_lower;
+
+  logic [31:0][HPM_EVENT_IDX_WIDTH-1:0] mhpmevent_d, mhpmevent_q;
 
 
   assign is_irq = csr_cause_i[5];
@@ -354,54 +309,6 @@ if(PULP_SECURE==1) begin
       12'h002: csr_rdata_int = (FPU == 1) ? {29'b0, frm_q}           : '0;
       12'h003: csr_rdata_int = (FPU == 1) ? {24'b0, frm_q, fflags_q} : '0;
       12'h006: csr_rdata_int = (FPU == 1) ? {27'b0, fprec_q}         : '0; // Optional precision control for FP DIV/SQRT Unit
-
-      /********************* Aggiunta sb fpu : I vari registri per selezionare i formati ****************************/
-      /* 0x007 : Seleziona solo fpu_fmt_dst                                                                         */
-      /* 0x008 : Seleziona solo fpu_fmt_src (per fare casting)                                                      */
-      /* 0x009 : Seleziona solo fpu_int_fmt (per fare casting)                                                         */
-      /* 0x00a : Per fare casting da FP -> FP, permette di scivere il source e destination in una scittura sola     */
-      /* 0x00b : Per fare casting da FP -> INT, permette di scrivere in un unica scrittura fpu_fmt_dst e fpu_int_fmt   */
-      /* 0x00c : Per fare casting da INT -> FP, permette di scrivere in un unica scrittura fpu_fmt_src e fpu_int_fmt   */
-      /**************************************************************************************************************/
-      12'h007: csr_rdata_int = (FPU == 1) ? {                    {(32-C_FPNEW_FMTBITS){1'b0}}, fpu_dst_fmt_q}                : '0;
-      12'h008: csr_rdata_int = (FPU == 1) ? {                    {(32-C_FPNEW_FMTBITS){1'b0}}, fpu_src_fmt_q}                : '0;
-      12'h009: csr_rdata_int = (FPU == 1) ? {                   {(32-C_FPNEW_IFMTBITS){1'b0}},    fpu_int_fmt_q}                : '0;
-      12'h00a: csr_rdata_int = (FPU == 1) ? {                  {(32-2*C_FPNEW_FMTBITS){1'b0}}, fpu_src_fmt_q, fpu_dst_fmt_q} : '0;
-      12'h00b: csr_rdata_int = (FPU == 1) ? { {(32-(C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS)){1'b0}},    fpu_int_fmt_q, fpu_src_fmt_q} : '0;
-      12'h00c: csr_rdata_int = (FPU == 1) ? { {(32-(C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS)){1'b0}},    fpu_int_fmt_q, fpu_dst_fmt_q} : '0;
-
-      /************************* Added for sb ivec : new register for format selection ***************************
-       * 0x00d : Select the format for ivec instructions                                                         *
-       * 0x00e : Counter of the current mixed precision operation                                                *
-       ***********************************************************************************************************/
-      12'h00d: csr_rdata_int = {      {(32-IVEC_FMT_BITS){1'b0}},         ivec_fmt_q};
-      12'h00e: csr_rdata_int = { {(32-NBITS_MIXED_CYCLES){1'b0}}, ivec_mixed_cycle_q};      
-      12'h00f: csr_rdata_int = {      {(32-NBITS_MAX_KER){1'b0}},   ivec_skip_size_q};            
-
-      /************************ LEGACY STATSU BASED MODE ********************************************************/
-
-      12'h010: csr_rdata_int = { {(31){1'b0}}, sb_legacy_q};
-
-      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
-      * 0x100 : current activation address
-      * 0x101 : current weight address
-      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
-      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
-      * 0x104 : activation rollback increment, -3*s_a+4 for example
-      * 0x105 : weight rollback increment, -3*s_w+4 for example
-      * 0x106 : number of regular activation updates before rollback
-      * 0x107 : number of regular weight updates before rollback
-      ***********************************************************************************************************/
-      12'h100: csr_rdata_int = macl_a_address_q;
-      12'h101: csr_rdata_int = macl_w_address_q;
-      12'h102: csr_rdata_int = macl_a_stride_q;
-      12'h103: csr_rdata_int = macl_w_stride_q;
-      12'h104: csr_rdata_int = macl_a_rollback_q;
-      12'h105: csr_rdata_int = macl_w_rollback_q;
-      12'h106: csr_rdata_int = macl_a_skip_q;
-      12'h107: csr_rdata_int = macl_w_skip_q;
-      
-      
       // mstatus
       12'h300: csr_rdata_int = {
                                   14'b0,
@@ -421,12 +328,82 @@ if(PULP_SECURE==1) begin
       12'h301: csr_rdata_int = MISA_VALUE;
       // mtvec: machine trap-handler base address
       12'h305: csr_rdata_int = {mtvec_q, 6'h0, MTVEC_MODE};
+
+      CSR_MCOUNTEREN: csr_rdata_int = mcounteren_q;
+      CSR_MCOUNTINHIBIT: csr_rdata_int = mcountinhibit_q;
+
+      CSR_MHPMEVENT3:   csr_rdata_int = mhpmevent_q[ 3];
+      CSR_MHPMEVENT4:   csr_rdata_int = mhpmevent_q[ 4];
+      CSR_MHPMEVENT5:   csr_rdata_int = mhpmevent_q[ 5];
+      CSR_MHPMEVENT6:   csr_rdata_int = mhpmevent_q[ 6];
+      CSR_MHPMEVENT7:   csr_rdata_int = mhpmevent_q[ 7];
+      CSR_MHPMEVENT8:   csr_rdata_int = mhpmevent_q[ 8];
+      CSR_MHPMEVENT9:   csr_rdata_int = mhpmevent_q[ 9];
+      CSR_MHPMEVENT10:  csr_rdata_int = mhpmevent_q[10];
+      CSR_MHPMEVENT11:  csr_rdata_int = mhpmevent_q[11];
+      CSR_MHPMEVENT12:  csr_rdata_int = mhpmevent_q[12];
+      CSR_MHPMEVENT13:  csr_rdata_int = mhpmevent_q[13];
+      CSR_MHPMEVENT14:  csr_rdata_int = mhpmevent_q[14];
+      CSR_MHPMEVENT15:  csr_rdata_int = mhpmevent_q[15];
+      CSR_MHPMEVENT16:  csr_rdata_int = mhpmevent_q[16];
+      CSR_MHPMEVENT17:  csr_rdata_int = mhpmevent_q[17];
+      CSR_MHPMEVENT18:  csr_rdata_int = mhpmevent_q[18];
+      CSR_MHPMEVENT19:  csr_rdata_int = mhpmevent_q[19];
+      CSR_MHPMEVENT20:  csr_rdata_int = mhpmevent_q[20];
+      CSR_MHPMEVENT21:  csr_rdata_int = mhpmevent_q[21];
+      CSR_MHPMEVENT22:  csr_rdata_int = mhpmevent_q[22];
+      CSR_MHPMEVENT23:  csr_rdata_int = mhpmevent_q[23];
+      CSR_MHPMEVENT24:  csr_rdata_int = mhpmevent_q[24];
+      CSR_MHPMEVENT25:  csr_rdata_int = mhpmevent_q[25];
+      CSR_MHPMEVENT26:  csr_rdata_int = mhpmevent_q[26];
+      CSR_MHPMEVENT27:  csr_rdata_int = mhpmevent_q[27];
+      CSR_MHPMEVENT28:  csr_rdata_int = mhpmevent_q[28];
+      CSR_MHPMEVENT29:  csr_rdata_int = mhpmevent_q[29];
+      CSR_MHPMEVENT30:  csr_rdata_int = mhpmevent_q[30];
+      CSR_MHPMEVENT31:  csr_rdata_int = mhpmevent_q[31];
+
       // mscratch: machine scratch
       12'h340: csr_rdata_int = mscratch_q;
       // mepc: exception program counter
       12'h341: csr_rdata_int = mepc_q;
       // mcause: exception cause
       12'h342: csr_rdata_int = {mcause_q[5], 26'b0, mcause_q[4:0]};
+      // stack base and size
+      12'h400: csr_rdata_int = stack_base_q;
+      12'h404: csr_rdata_int = stack_size_q;
+
+      CSR_MCYCLE:         csr_rdata_int = mhpmcounter_q[ 0];
+      CSR_MINSTRET:       csr_rdata_int = mhpmcounter_q[ 2];
+      CSR_MHPMCOUNTER3:   csr_rdata_int = mhpmcounter_q[ 3];
+      CSR_MHPMCOUNTER4:   csr_rdata_int = mhpmcounter_q[ 4];
+      CSR_MHPMCOUNTER5:   csr_rdata_int = mhpmcounter_q[ 5];
+      CSR_MHPMCOUNTER6:   csr_rdata_int = mhpmcounter_q[ 6];
+      CSR_MHPMCOUNTER7:   csr_rdata_int = mhpmcounter_q[ 7];
+      CSR_MHPMCOUNTER8:   csr_rdata_int = mhpmcounter_q[ 8];
+      CSR_MHPMCOUNTER9:   csr_rdata_int = mhpmcounter_q[ 9];
+      CSR_MHPMCOUNTER10:  csr_rdata_int = mhpmcounter_q[10];
+      CSR_MHPMCOUNTER11:  csr_rdata_int = mhpmcounter_q[11];
+      CSR_MHPMCOUNTER12:  csr_rdata_int = mhpmcounter_q[12];
+      CSR_MHPMCOUNTER13:  csr_rdata_int = mhpmcounter_q[13];
+      CSR_MHPMCOUNTER14:  csr_rdata_int = mhpmcounter_q[14];
+      CSR_MHPMCOUNTER15:  csr_rdata_int = mhpmcounter_q[15];
+      CSR_MHPMCOUNTER16:  csr_rdata_int = mhpmcounter_q[16];
+      CSR_MHPMCOUNTER17:  csr_rdata_int = mhpmcounter_q[17];
+      CSR_MHPMCOUNTER18:  csr_rdata_int = mhpmcounter_q[18];
+      CSR_MHPMCOUNTER19:  csr_rdata_int = mhpmcounter_q[19];
+      CSR_MHPMCOUNTER20:  csr_rdata_int = mhpmcounter_q[20];
+      CSR_MHPMCOUNTER21:  csr_rdata_int = mhpmcounter_q[21];
+      CSR_MHPMCOUNTER22:  csr_rdata_int = mhpmcounter_q[22];
+      CSR_MHPMCOUNTER23:  csr_rdata_int = mhpmcounter_q[23];
+      CSR_MHPMCOUNTER24:  csr_rdata_int = mhpmcounter_q[24];
+      CSR_MHPMCOUNTER25:  csr_rdata_int = mhpmcounter_q[25];
+      CSR_MHPMCOUNTER26:  csr_rdata_int = mhpmcounter_q[26];
+      CSR_MHPMCOUNTER27:  csr_rdata_int = mhpmcounter_q[27];
+      CSR_MHPMCOUNTER28:  csr_rdata_int = mhpmcounter_q[28];
+      CSR_MHPMCOUNTER29:  csr_rdata_int = mhpmcounter_q[29];
+      CSR_MHPMCOUNTER30:  csr_rdata_int = mhpmcounter_q[30];
+      CSR_MHPMCOUNTER31:  csr_rdata_int = mhpmcounter_q[31];
+
       // mhartid: unique hardware thread id
       12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
 
@@ -488,52 +465,6 @@ end else begin //PULP_SECURE == 0
       12'h002: csr_rdata_int = (FPU == 1) ? {29'b0, frm_q}           : '0;
       12'h003: csr_rdata_int = (FPU == 1) ? {24'b0, frm_q, fflags_q} : '0;
       12'h006: csr_rdata_int = (FPU == 1) ? {27'b0, fprec_q}         : '0; // Optional precision control for FP DIV/SQRT Unit
-
-      /********************* Aggiunta sb fpu : I vari registri per selezionare i formati ****************************/
-      /* 0x007 : Seleziona solo fpu_fmt_dst                                                                         */
-      /* 0x008 : Seleziona solo fpu_fmt_src (per fare casting)                                                      */
-      /* 0x009 : Seleziona solo fpu_int_fmt (per fare casting)                                                         */
-      /* 0x00a : Per fare casting da FP -> FP, permette di scivere il source e destination in una scittura sola     */
-      /* 0x00b : Per fare casting da FP -> INT, permette di scrivere in un unica scrittura fpu_fmt_dst e fpu_int_fmt   */
-      /* 0x00c : Per fare casting da INT -> FP, permette di scrivere in un unica scrittura fpu_fmt_src e fpu_int_fmt   */
-      /**************************************************************************************************************/
-      12'h007: csr_rdata_int = (FPU == 1) ? {                    {(32-C_FPNEW_FMTBITS){1'b0}},                fpu_dst_fmt_q} : '0;
-      12'h008: csr_rdata_int = (FPU == 1) ? {                    {(32-C_FPNEW_FMTBITS){1'b0}},                fpu_src_fmt_q} : '0;
-      12'h009: csr_rdata_int = (FPU == 1) ? {                   {(32-C_FPNEW_IFMTBITS){1'b0}},                   fpu_int_fmt_q} : '0;
-      12'h00a: csr_rdata_int = (FPU == 1) ? {                  {(32-2*C_FPNEW_FMTBITS){1'b0}}, fpu_src_fmt_q, fpu_dst_fmt_q} : '0;
-      12'h00b: csr_rdata_int = (FPU == 1) ? { {(32-(C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS)){1'b0}},    fpu_int_fmt_q, fpu_src_fmt_q} : '0;
-      12'h00c: csr_rdata_int = (FPU == 1) ? { {(32-(C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS)){1'b0}},    fpu_int_fmt_q, fpu_dst_fmt_q} : '0;
-
-      /************************* Added for sb ivec : new register for format selection ***************************
-       * 0x00d : Select the format for ivec instructions                                                         *
-       * 0x00e : Counter of the current mixed precision operation                                                *
-       ***********************************************************************************************************/
-      12'h00d: csr_rdata_int = {      {(32-IVEC_FMT_BITS){1'b0}},         ivec_fmt_q};
-      12'h00e: csr_rdata_int = { {(32-NBITS_MIXED_CYCLES){1'b0}}, ivec_mixed_cycle_q};      
-      12'h00f: csr_rdata_int = {      {(32-NBITS_MAX_KER){1'b0}},   ivec_skip_size_q};
-
-      /************************ LEGACY STATSU BASED MODE ********************************************************/      
-      12'h010: csr_rdata_int = { {(31){1'b0}}, sb_legacy_q};
-
-      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
-      * 0x100 : current activation address
-      * 0x101 : current weight address
-      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
-      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
-      * 0x104 : activation rollback increment, -3*s_a+4 for example
-      * 0x105 : weight rollback increment, -3*s_w+4 for example
-      * 0x106 : number of regular activation updates before rollback
-      * 0x107 : number of regular weight updates before rollback
-      ***********************************************************************************************************/
-      12'h100: csr_rdata_int = macl_a_address_q;
-      12'h101: csr_rdata_int = macl_w_address_q;
-      12'h102: csr_rdata_int = macl_a_stride_q;
-      12'h103: csr_rdata_int = macl_w_stride_q;
-      12'h104: csr_rdata_int = macl_a_rollback_q;
-      12'h105: csr_rdata_int = macl_w_rollback_q;
-      12'h106: csr_rdata_int = macl_a_skip_q;
-      12'h107: csr_rdata_int = macl_w_skip_q;
-
       // mstatus: always M-mode, contains IE bit
       12'h300: csr_rdata_int = {
                                   14'b0,
@@ -548,17 +479,86 @@ end else begin //PULP_SECURE == 0
                                   2'h0,
                                   mstatus_q.uie
                                 };
-      
       // misa: machine isa register
       12'h301: csr_rdata_int = MISA_VALUE;
       // mtvec: machine trap-handler base address
       12'h305: csr_rdata_int = {mtvec_q, 6'h0, MTVEC_MODE};
+
+      CSR_MCOUNTEREN: csr_rdata_int = mcounteren_q;
+      CSR_MCOUNTINHIBIT: csr_rdata_int = mcountinhibit_q;
+
+      CSR_MHPMEVENT3:   csr_rdata_int = mhpmevent_q[ 3];
+      CSR_MHPMEVENT4:   csr_rdata_int = mhpmevent_q[ 4];
+      CSR_MHPMEVENT5:   csr_rdata_int = mhpmevent_q[ 5];
+      CSR_MHPMEVENT6:   csr_rdata_int = mhpmevent_q[ 6];
+      CSR_MHPMEVENT7:   csr_rdata_int = mhpmevent_q[ 7];
+      CSR_MHPMEVENT8:   csr_rdata_int = mhpmevent_q[ 8];
+      CSR_MHPMEVENT9:   csr_rdata_int = mhpmevent_q[ 9];
+      CSR_MHPMEVENT10:  csr_rdata_int = mhpmevent_q[10];
+      CSR_MHPMEVENT11:  csr_rdata_int = mhpmevent_q[11];
+      CSR_MHPMEVENT12:  csr_rdata_int = mhpmevent_q[12];
+      CSR_MHPMEVENT13:  csr_rdata_int = mhpmevent_q[13];
+      CSR_MHPMEVENT14:  csr_rdata_int = mhpmevent_q[14];
+      CSR_MHPMEVENT15:  csr_rdata_int = mhpmevent_q[15];
+      CSR_MHPMEVENT16:  csr_rdata_int = mhpmevent_q[16];
+      CSR_MHPMEVENT17:  csr_rdata_int = mhpmevent_q[17];
+      CSR_MHPMEVENT18:  csr_rdata_int = mhpmevent_q[18];
+      CSR_MHPMEVENT19:  csr_rdata_int = mhpmevent_q[19];
+      CSR_MHPMEVENT20:  csr_rdata_int = mhpmevent_q[20];
+      CSR_MHPMEVENT21:  csr_rdata_int = mhpmevent_q[21];
+      CSR_MHPMEVENT22:  csr_rdata_int = mhpmevent_q[22];
+      CSR_MHPMEVENT23:  csr_rdata_int = mhpmevent_q[23];
+      CSR_MHPMEVENT24:  csr_rdata_int = mhpmevent_q[24];
+      CSR_MHPMEVENT25:  csr_rdata_int = mhpmevent_q[25];
+      CSR_MHPMEVENT26:  csr_rdata_int = mhpmevent_q[26];
+      CSR_MHPMEVENT27:  csr_rdata_int = mhpmevent_q[27];
+      CSR_MHPMEVENT28:  csr_rdata_int = mhpmevent_q[28];
+      CSR_MHPMEVENT29:  csr_rdata_int = mhpmevent_q[29];
+      CSR_MHPMEVENT30:  csr_rdata_int = mhpmevent_q[30];
+      CSR_MHPMEVENT31:  csr_rdata_int = mhpmevent_q[31];
+
       // mscratch: machine scratch
       12'h340: csr_rdata_int = mscratch_q;
       // mepc: exception program counter
       12'h341: csr_rdata_int = mepc_q;
       // mcause: exception cause
       12'h342: csr_rdata_int = {mcause_q[5], 26'b0, mcause_q[4:0]};
+      // stack base and size
+      12'h400: csr_rdata_int = stack_base_q;
+      12'h404: csr_rdata_int = stack_size_q;
+
+      CSR_MCYCLE:         csr_rdata_int = mhpmcounter_q[ 0];
+      CSR_MINSTRET:       csr_rdata_int = mhpmcounter_q[ 2];
+      CSR_MHPMCOUNTER3:   csr_rdata_int = mhpmcounter_q[ 3];
+      CSR_MHPMCOUNTER4:   csr_rdata_int = mhpmcounter_q[ 4];
+      CSR_MHPMCOUNTER5:   csr_rdata_int = mhpmcounter_q[ 5];
+      CSR_MHPMCOUNTER6:   csr_rdata_int = mhpmcounter_q[ 6];
+      CSR_MHPMCOUNTER7:   csr_rdata_int = mhpmcounter_q[ 7];
+      CSR_MHPMCOUNTER8:   csr_rdata_int = mhpmcounter_q[ 8];
+      CSR_MHPMCOUNTER9:   csr_rdata_int = mhpmcounter_q[ 9];
+      CSR_MHPMCOUNTER10:  csr_rdata_int = mhpmcounter_q[10];
+      CSR_MHPMCOUNTER11:  csr_rdata_int = mhpmcounter_q[11];
+      CSR_MHPMCOUNTER12:  csr_rdata_int = mhpmcounter_q[12];
+      CSR_MHPMCOUNTER13:  csr_rdata_int = mhpmcounter_q[13];
+      CSR_MHPMCOUNTER14:  csr_rdata_int = mhpmcounter_q[14];
+      CSR_MHPMCOUNTER15:  csr_rdata_int = mhpmcounter_q[15];
+      CSR_MHPMCOUNTER16:  csr_rdata_int = mhpmcounter_q[16];
+      CSR_MHPMCOUNTER17:  csr_rdata_int = mhpmcounter_q[17];
+      CSR_MHPMCOUNTER18:  csr_rdata_int = mhpmcounter_q[18];
+      CSR_MHPMCOUNTER19:  csr_rdata_int = mhpmcounter_q[19];
+      CSR_MHPMCOUNTER20:  csr_rdata_int = mhpmcounter_q[20];
+      CSR_MHPMCOUNTER21:  csr_rdata_int = mhpmcounter_q[21];
+      CSR_MHPMCOUNTER22:  csr_rdata_int = mhpmcounter_q[22];
+      CSR_MHPMCOUNTER23:  csr_rdata_int = mhpmcounter_q[23];
+      CSR_MHPMCOUNTER24:  csr_rdata_int = mhpmcounter_q[24];
+      CSR_MHPMCOUNTER25:  csr_rdata_int = mhpmcounter_q[25];
+      CSR_MHPMCOUNTER26:  csr_rdata_int = mhpmcounter_q[26];
+      CSR_MHPMCOUNTER27:  csr_rdata_int = mhpmcounter_q[27];
+      CSR_MHPMCOUNTER28:  csr_rdata_int = mhpmcounter_q[28];
+      CSR_MHPMCOUNTER29:  csr_rdata_int = mhpmcounter_q[29];
+      CSR_MHPMCOUNTER30:  csr_rdata_int = mhpmcounter_q[30];
+      CSR_MHPMCOUNTER31:  csr_rdata_int = mhpmcounter_q[31];
+
       // mhartid: unique hardware thread id
       12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
 
@@ -596,24 +596,6 @@ if(PULP_SECURE==1) begin
     fflags_n                 = fflags_q;
     frm_n                    = frm_q;
     fprec_n                  = fprec_q;
-
-    fpu_dst_fmt_n            = fpu_dst_fmt_q;      //aggiunta sb fpu
-    fpu_src_fmt_n            = fpu_src_fmt_q;      //aggiunta sb fpu
-    fpu_int_fmt_n               = fpu_int_fmt_q;         //aggiunta sb fpu
-    ivec_fmt_n               = ivec_fmt_q;         //added ivec sb
-    ivec_mixed_cycle_n       = ivec_mixed_cycle_q; //added for ivec sb
-    ivec_skip_size_n         = ivec_skip_size_q;   //added for ivec sb
-    sb_legacy_n              = sb_legacy_q;        //Added for ivec sb
-
-    macl_a_address_n         = macl_a_address_q;   //added for status based MACLOAD
-    macl_w_address_n         = macl_w_address_q;   //added for status based MACLOAD
-    macl_a_stride_n          = macl_a_stride_q;    //added for status based MACLOAD
-    macl_w_stride_n          = macl_w_stride_q;    //added for status based MACLOAD
-    macl_a_rollback_n        = macl_a_rollback_q;  //added for status based MACLOAD
-    macl_w_rollback_n        = macl_w_rollback_q;  //added for status based MACLOAD
-    macl_a_skip_n            = macl_a_skip_q;      //added for status based MACLOAD
-    macl_w_skip_n            = macl_w_skip_q;      //added for status based MACLOAD
-
     mscratch_n               = mscratch_q;
     mepc_n                   = mepc_q;
     uepc_n                   = uepc_q;
@@ -624,6 +606,8 @@ if(PULP_SECURE==1) begin
 
     mstatus_n                = mstatus_q;
     mcause_n                 = mcause_q;
+    stack_base_n             = stack_base_q;
+    stack_size_n             = stack_size_q;
     ucause_n                 = ucause_q;
     hwlp_we_o                = '0;
     hwlp_regid_o             = '0;
@@ -636,9 +620,6 @@ if(PULP_SECURE==1) begin
     pmpaddr_we               = '0;
     pmpcfg_we                = '0;
 
-    macl_a_rstn_o            = 1'b1;
-    macl_w_rstn_o            = 1'b1;
-
     if (FPU == 1) if (fflags_we_i) fflags_n = fflags_i | fflags_q;
 
     casex (csr_addr_i)
@@ -650,76 +631,6 @@ if(PULP_SECURE==1) begin
          frm_n    = (FPU == 1) ? csr_wdata_int[C_RM+C_FFLAG-1:C_FFLAG] : '0;
       end
       12'h006: if (csr_we_int) fprec_n = (FPU == 1) ? csr_wdata_int[C_PC-1:0]    : '0;
-
-     /********************* Aggiunta sb fpu : I vari registri per selezionare i formati ****************************/
-      /* 0x007 : Seleziona solo fpu_fmt_dst                                                                         */
-      /* 0x008 : Seleziona solo fpu_fmt_src (per fare casting)                                                      */
-      /* 0x009 : Seleziona solo fpu_int_fmt (per fare casting)                                                         */
-      /* 0x00a : Per fare casting da FP -> FP, permette di scivere il source e destination in una scittura sola     */
-      /* 0x00b : Per fare casting da FP -> INT, permette di scrivere in un unica scrittura fpu_fmt_dst e fpu_int_fmt   */
-      /* 0x00c : Per fare casting da INT -> FP, permette di scrivere in un unica scrittura fpu_fmt_src e fpu_int_fmt   */
-      /**************************************************************************************************************/
-      12'h007: if (csr_we_int) fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]   : '0; 
-      12'h008: if (csr_we_int) fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]   : '0;
-      12'h009: if (csr_we_int) fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS-1:0]  : '0;
-      12'h00a: if (csr_we_int)
-      begin
-         fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[2*C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end
-      12'h00b: if (csr_we_int)
-      begin
-         fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end
-      12'h00c: if (csr_we_int) 
-      begin
-         fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end     
-
-      /************************* Added for sb ivec : new register for format selection ***************************
-       * 0x00d : Select the format for ivec instructions                                                         *
-       * 0x00e : Counter of the current mixed precision operation                                                *
-       ***********************************************************************************************************/
-      12'h00d: if (csr_we_int) ivec_fmt_n = ivec_mode_fmt'(csr_wdata_int[IVEC_FMT_BITS-1:0]); 
-      12'h00e: if (csr_we_int) ivec_mixed_cycle_n = csr_wdata_int[NBITS_MIXED_CYCLES-1:0];     
-      12'h00f: if (csr_we_int) ivec_skip_size_n = csr_wdata_int[NBITS_MAX_KER-1:0];
-
-      /************************ LEGACY STATSU BASED MODE ********************************************************/      
-      
-      12'h010: if (csr_we_int) sb_legacy_n = csr_wdata_int[0];
-
-      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
-      * 0x100 : current activation address
-      * 0x101 : current weight address
-      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
-      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
-      * 0x104 : activation rollback increment, -3*s_a+4 for example
-      * 0x105 : weight rollback increment, -3*s_w+4 for example
-      * 0x106 : number of regular activation updates before rollback
-      * 0x107 : number of regular weight updates before rollback
-      ***********************************************************************************************************/
-      12'h100: begin
-        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_we_int) begin
-          macl_a_address_n = csr_wdata_int;
-          macl_a_rstn_o = 1'b0;
-        end
-      end
-      12'h101: begin
-        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_we_int) begin
-          macl_w_address_n = csr_wdata_int;
-          macl_w_rstn_o = 1'b0;
-        end
-      end
-      12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
-      12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
-      12'h104: if(csr_we_int) macl_a_rollback_n = csr_wdata_int;
-      12'h105: if(csr_we_int) macl_w_rollback_n = csr_wdata_int;
-      12'h106: if(csr_we_int) macl_a_skip_n = csr_wdata_int;
-      12'h107: if(csr_we_int) macl_w_skip_n = csr_wdata_int;
 
       // mstatus: IE bit
       12'h300: if (csr_we_int) begin
@@ -766,16 +677,22 @@ if(PULP_SECURE==1) begin
                begin
                     depc_n = csr_wdata_int & ~32'b1; // force 16-bit alignment
                end
+
       CSR_DSCRATCH0:
                if (csr_we_int)
                begin
                     dscratch0_n = csr_wdata_int;
                end
+
       CSR_DSCRATCH1:
                if (csr_we_int)
                begin
                     dscratch1_n = csr_wdata_int;
                end
+
+      // stack base and size
+      12'h400: if (csr_we_int) stack_base_n = csr_wdata_int;
+      12'h404: if (csr_we_int) stack_size_n = csr_wdata_int;
 
       // hardware loops
       HWLoop0_START:   if (csr_we_int) begin hwlp_we_o = 3'b001; hwlp_regid_o = 1'b0; end
@@ -817,18 +734,6 @@ if(PULP_SECURE==1) begin
       end
       // ucause: exception cause
       12'h042: if (csr_we_int) ucause_n = {csr_wdata_int[31], csr_wdata_int[4:0]};
-    endcase
-
-    case (csr_macl_addr_i)
-      12'h100: begin
-        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_macl_we_int) macl_a_address_n = csr_macl_wdata_int;
-      end
-      12'h101: begin
-        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_macl_we_int) macl_w_address_n = csr_macl_wdata_int;
-      end
-      default : ;
     endcase
 
     // exception controller gets priority over other writes
@@ -958,24 +863,6 @@ end else begin //PULP_SECURE == 0
     fflags_n                 = fflags_q;
     frm_n                    = frm_q;
     fprec_n                  = fprec_q;
-
-    fpu_dst_fmt_n            = fpu_dst_fmt_q;  //aggiunta sb fpu
-    fpu_src_fmt_n            = fpu_src_fmt_q; //aggiunta sb fpu
-    fpu_int_fmt_n               = fpu_int_fmt_q; //aggiunta sb fpu
-    ivec_fmt_n               = ivec_fmt_q; //added for ivec sb
-    ivec_mixed_cycle_n       = ivec_mixed_cycle_q; //added for ivec sb
-    ivec_skip_size_n         = ivec_skip_size_q;   //added for ivec sb     
-    sb_legacy_n              = sb_legacy_q;        //added for sb
-
-    macl_a_address_n         = macl_a_address_q;   //added for status based MACLOAD
-    macl_w_address_n         = macl_w_address_q;   //added for status based MACLOAD
-    macl_a_stride_n          = macl_a_stride_q;    //added for status based MACLOAD
-    macl_w_stride_n          = macl_w_stride_q;    //added for status based MACLOAD
-    macl_a_rollback_n        = macl_a_rollback_q;  //added for status based MACLOAD
-    macl_w_rollback_n        = macl_w_rollback_q;  //added for status based MACLOAD
-    macl_a_skip_n            = macl_a_skip_q;      //added for status based MACLOAD
-    macl_w_skip_n            = macl_w_skip_q;      //added for status based MACLOAD
-
     mscratch_n               = mscratch_q;
     mepc_n                   = mepc_q;
     depc_n                   = depc_q;
@@ -985,6 +872,8 @@ end else begin //PULP_SECURE == 0
 
     mstatus_n                = mstatus_q;
     mcause_n                 = mcause_q;
+    stack_base_n             = stack_base_q;
+    stack_size_n             = stack_size_q;
     hwlp_we_o                = '0;
     hwlp_regid_o             = '0;
     exception_pc             = pc_id_i;
@@ -994,9 +883,6 @@ end else begin //PULP_SECURE == 0
     pmp_reg_n.pmpcfg_packed  = pmp_reg_q.pmpcfg_packed;
     pmpaddr_we               = '0;
     pmpcfg_we                = '0;
-
-    macl_a_rstn_o            = 1'b1;
-    macl_w_rstn_o            = 1'b1;
 
 
     if (FPU == 1) if (fflags_we_i) fflags_n = fflags_i | fflags_q;
@@ -1011,75 +897,6 @@ end else begin //PULP_SECURE == 0
       end
       12'h006: if (csr_we_int) fprec_n = (FPU == 1) ? csr_wdata_int[C_PC-1:0]    : '0;
 
-      /********************* Aggiunta sb fpu : I vari registri per selezionare i formati ****************************/
-      /* 0x007 : Seleziona solo fpu_fmt_dst                                                                         */
-      /* 0x008 : Seleziona solo fpu_fmt_src (per fare casting)                                                      */
-      /* 0x009 : Seleziona solo fpu_int_fmt (per fare casting)                                                         */
-      /* 0x00a : Per fare casting da FP -> FP, permette di scivere il source e destination in una scittura sola     */
-      /* 0x00b : Per fare casting da FP -> INT, permette di scrivere in un unica scrittura fpu_fmt_dst e fpu_int_fmt   */
-      /* 0x00c : Per fare casting da INT -> FP, permette di scrivere in un unica scrittura fpu_fmt_src e fpu_int_fmt   */
-      /**************************************************************************************************************/
-      12'h007: if (csr_we_int) fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]   : '0; 
-      12'h008: if (csr_we_int) fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]   : '0;
-      12'h009: if (csr_we_int) fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS-1:0]  : '0;
-      12'h00a: if (csr_we_int)
-      begin
-         fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[2*C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end
-      12'h00b: if (csr_we_int)
-      begin
-         fpu_src_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end
-      12'h00c: if (csr_we_int) 
-      begin
-         fpu_dst_fmt_n  = (FPU == 1) ? csr_wdata_int[C_FPNEW_FMTBITS-1:0]  : '0;
-         fpu_int_fmt_n = (FPU == 1) ? csr_wdata_int[C_FPNEW_IFMTBITS+C_FPNEW_FMTBITS-1:C_FPNEW_FMTBITS]  : '0;
-      end
-      /************************* Added for sb ivec : new register for format selection ***************************
-       * 0x00d : Select the format for ivec instructions                                                         *
-       * 0x00e : Counter of the current mixed precision operation                                                *
-       ***********************************************************************************************************/
-      12'h00d: if (csr_we_int) ivec_fmt_n = ivec_mode_fmt'(csr_wdata_int[IVEC_FMT_BITS-1:0]); 
-      12'h00e: if (csr_we_int) ivec_mixed_cycle_n = csr_wdata_int[NBITS_MIXED_CYCLES-1:0];     
-      12'h00f: if (csr_we_int) ivec_skip_size_n = csr_wdata_int[NBITS_MAX_KER-1:0];
-
-      /************************ LEGACY STATSU BASED MODE ********************************************************/      
-      
-      12'h010: if (csr_we_int) sb_legacy_n = csr_wdata_int[0];
-      
-      /************************** STATUS BASED MACLOAD REGISTERS ************************************************
-      * 0x100 : current activation address
-      * 0x101 : current weight address
-      * 0x102 : regular activation address increment, s_a=(CH_IN*DIM_KER*DIM_KER) >> n_a_byte for example
-      * 0x103 : regular weight address increment, s_w(CH_IN*DIM_KER*DIM_KER) >> n_w_byte
-      * 0x104 : activation rollback increment, -3*s_a+4 for example
-      * 0x105 : weight rollback increment, -3*s_w+4 for example
-      * 0x106 : number of regular activation updates before rollback
-      * 0x107 : number of regular weight updates before rollback
-      ***********************************************************************************************************/
-      12'h100: begin
-        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_we_int) begin
-          macl_a_address_n = csr_wdata_int;
-          macl_a_rstn_o = 1'b0;
-        end
-      end
-      12'h101: begin
-        if(csr_we_int && csr_macl_we_int && (csr_macl_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_we_int) begin
-          macl_w_address_n = csr_wdata_int;
-          macl_w_rstn_o = 1'b0;
-        end
-      end
-      12'h102: if(csr_we_int) macl_a_stride_n = csr_wdata_int;
-      12'h103: if(csr_we_int) macl_w_stride_n = csr_wdata_int;
-      12'h104: if(csr_we_int) macl_a_rollback_n = csr_wdata_int;
-      12'h105: if(csr_we_int) macl_w_rollback_n = csr_wdata_int;
-      12'h106: if(csr_we_int) macl_a_skip_n = csr_wdata_int;
-      12'h107: if(csr_we_int) macl_w_skip_n = csr_wdata_int;
-      
       // mstatus: IE bit
       12'h300: if (csr_we_int) begin
         mstatus_n = '{
@@ -1134,6 +951,10 @@ end else begin //PULP_SECURE == 0
                     dscratch1_n = csr_wdata_int;
                end
 
+      // stack base and size
+      12'h400: if (csr_we_int) stack_base_n = csr_wdata_int;
+      12'h404: if (csr_we_int) stack_size_n = csr_wdata_int;
+
       // hardware loops
       HWLoop0_START: if (csr_we_int) begin hwlp_we_o = 3'b001; hwlp_regid_o = 1'b0; end
       HWLoop0_END: if (csr_we_int) begin hwlp_we_o = 3'b010; hwlp_regid_o = 1'b0; end
@@ -1141,18 +962,6 @@ end else begin //PULP_SECURE == 0
       HWLoop1_START: if (csr_we_int) begin hwlp_we_o = 3'b001; hwlp_regid_o = 1'b1; end
       HWLoop1_END: if (csr_we_int) begin hwlp_we_o = 3'b010; hwlp_regid_o = 1'b1; end
       HWLoop1_COUNTER: if (csr_we_int) begin hwlp_we_o = 3'b100; hwlp_regid_o = 1'b1; end
-    endcase
-
-    case (csr_macl_addr_i)
-      12'h100: begin
-        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h100)) macl_a_address_n = '0;
-        else if(csr_macl_we_int) macl_a_address_n = csr_macl_wdata_int;
-      end
-      12'h101: begin
-        if(csr_we_int && csr_macl_we_int && (csr_addr_i == 12'h101)) macl_w_address_n = '0;
-        else if(csr_macl_we_int) macl_w_address_n = csr_macl_wdata_int;
-      end
-      default : ;
     endcase
 
     // exception controller gets priority over other writes
@@ -1223,33 +1032,11 @@ end //PULP_SECURE
     endcase
   end
 
-  // CSR operation logic for MACLOAD registers
-  always_comb
-  begin
-    csr_macl_wdata_int = csr_macl_wdata_i;
-    csr_macl_we_int    = 1'b1;
-
-    unique case (csr_macl_op_i)
-    CSR_OP_WRITE: csr_macl_wdata_int = csr_macl_wdata_i;
-    CSR_OP_SET:   csr_macl_wdata_int = csr_macl_wdata_i | csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
-    CSR_OP_CLEAR: csr_macl_wdata_int = (~csr_macl_wdata_i) & csr_rdata_o; //to be checked --> used csr_rdata_o because there isn't an additional read port
-    CSR_OP_NONE: begin
-      csr_macl_wdata_int = csr_macl_wdata_i;
-      csr_macl_we_int    = 1'b0;
-    end
-      default : /* default */;
-    endcase
-  end
-
 
   // output mux
   always_comb
   begin
     csr_rdata_o = csr_rdata_int;
-
-    // performance counters
-    if (is_pccr || is_pcer || is_pcmr)
-      csr_rdata_o = perf_rdata;
   end
 
 
@@ -1260,21 +1047,6 @@ end //PULP_SECURE
   assign sec_lvl_o       = priv_lvl_q[0];
   assign frm_o           = (FPU == 1) ? frm_q : '0;
   assign fprec_o         = (FPU == 1) ? fprec_q : '0;
-
-  assign ivec_fmt_o      = ivec_fmt_q;  //added for ivec sb : output directly the format for ivec
-  assign ivec_mixed_cycle_o = ivec_mixed_cycle_q; //added for ivec sb : output directly the counter of cycle for ivec sb
-  assign ivec_skip_size_o   = ivec_skip_size_q;   //added for ivec sb : output directly the skip size value      
-  assign sb_legacy_o = sb_legacy_q; //added for sb : output the legacy mode for status based
-
-  assign macl_a_address_o  = macl_a_address_q;
-  assign macl_w_address_o  = macl_w_address_q;
-  assign macl_a_stride_o   = macl_a_stride_q;
-  assign macl_w_stride_o   = macl_w_stride_q;
-  assign macl_a_rollback_o = macl_a_rollback_q;
-  assign macl_w_rollback_o = macl_w_rollback_q;
-  assign macl_a_skip_o     = macl_a_skip_q;
-  assign macl_w_skip_o     = macl_w_skip_q;
-  
 
   assign mtvec_o         = mtvec_q;
   assign utvec_o         = utvec_q;
@@ -1365,11 +1137,6 @@ end //PULP_SECURE
         frm_q          <= '0;
         fflags_q       <= '0;
         fprec_q        <= '0;
-
-        fpu_dst_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
-        fpu_src_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
-        fpu_int_fmt_q     <= fpnew_pkg::INT32; //aggiunta sb fpu
-
       end
       mstatus_q  <= '{
               uie:  1'b0,
@@ -1381,6 +1148,8 @@ end //PULP_SECURE
             };
       mepc_q      <= '0;
       mcause_q    <= '0;
+      stack_base_q <= '0;
+      stack_size_q <= '0;
 
       depc_q      <= '0;
       dcsr_q      <= '0;
@@ -1388,22 +1157,6 @@ end //PULP_SECURE
       dscratch0_q <= '0;
       dscratch1_q <= '0;
       mscratch_q  <= '0;
-
-      ivec_fmt_q <= VEC_MODE32; //added for ivec sb : reset ivec format value
-      ivec_mixed_cycle_q <= '0; //added for ivec sb : reset the cycles counter
-      ivec_skip_size_q   <= '0; //added for ivec sb : reset skip size value
-      sb_legacy_q        <= '1; //added for sb : Reset Legacy Mode
-
-      macl_a_address_q  <= '0;
-      macl_w_address_q  <= '0;
-      macl_a_stride_q   <= '0;
-      macl_w_stride_q   <= '0;
-      macl_a_rollback_q <= '0;
-      macl_w_rollback_q <= '0;
-      macl_a_skip_q     <= '0;
-      macl_w_skip_q     <= '0;
-      
-
     end
     else
     begin
@@ -1412,11 +1165,6 @@ end //PULP_SECURE
         frm_q      <= frm_n;
         fflags_q   <= fflags_n;
         fprec_q    <= fprec_n;
-
-        fpu_dst_fmt_q  <= fpu_dst_fmt_n;  //aggiunta sb fpu
-        fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
-        fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
-
       end
       if (PULP_SECURE == 1) begin
         mstatus_q      <= mstatus_n ;
@@ -1438,206 +1186,206 @@ end //PULP_SECURE
       dscratch0_q<= dscratch0_n;
       dscratch1_q<= dscratch1_n;
       mscratch_q <= mscratch_n;
-
-      ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
-      ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
-      ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
-      sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
-      
-      macl_a_address_q  <= macl_a_address_n;
-      macl_w_address_q  <= macl_w_address_n;
-      macl_a_stride_q   <= macl_a_stride_n;
-      macl_w_stride_q   <= macl_w_stride_n;
-      macl_a_rollback_q <= macl_a_rollback_n;
-      macl_w_rollback_q <= macl_w_rollback_n;
-      macl_a_skip_q     <= macl_a_skip_n;
-      macl_w_skip_q     <= macl_w_skip_n;
-
+      stack_base_q <= stack_base_n;
+      stack_size_q <= stack_size_n;
     end
   end
 
-  /////////////////////////////////////////////////////////////////
-  //   ____            __     ____                  _            //
-  // |  _ \ ___ _ __ / _|   / ___|___  _   _ _ __ | |_ ___ _ __  //
-  // | |_) / _ \ '__| |_   | |   / _ \| | | | '_ \| __/ _ \ '__| //
-  // |  __/  __/ |  |  _|  | |__| (_) | |_| | | | | ||  __/ |    //
-  // |_|   \___|_|  |_|(_)  \____\___/ \__,_|_| |_|\__\___|_|    //
-  //                                                             //
-  /////////////////////////////////////////////////////////////////
+  assign stack_base_o = stack_base_q;
+  assign stack_limit_o = stack_base_q - stack_size_q;
 
-  assign PCCR_in[0]  = 1'b1;                                          // cycle counter
-  assign PCCR_in[1]  = id_valid_i & is_decoding_i;                    // instruction counter
-  assign PCCR_in[2]  = ld_stall_i & id_valid_q;                       // nr of load use hazards
-  assign PCCR_in[3]  = jr_stall_i & id_valid_q;                       // nr of jump register hazards
-  assign PCCR_in[4]  = imiss_i & (~pc_set_i);                         // cycles waiting for instruction fetches, excluding jumps and branches
-  assign PCCR_in[5]  = mem_load_i;                                    // nr of loads
-  assign PCCR_in[6]  = mem_store_i;                                   // nr of stores
-  assign PCCR_in[7]  = jump_i                     & id_valid_q;       // nr of jumps (unconditional)
-  assign PCCR_in[8]  = branch_i                   & id_valid_q;       // nr of branches (conditional)
-  assign PCCR_in[9]  = branch_i & branch_taken_i  & id_valid_q;       // nr of taken branches (conditional)
-  assign PCCR_in[10] = id_valid_i & is_decoding_i & is_compressed_i;  // compressed instruction counter
-  assign PCCR_in[11] = pipeline_stall_i;                              //extra cycles from elw
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+  // Hardware Performance Monitor (HPM) Implementation
+  //////////////////////////////////////////////////////////////////////////////////////////////////
 
-  if (APU == 1) begin
-     assign PCCR_in[PERF_APU_ID  ] = apu_typeconflict_i & ~apu_dep_i;
-     assign PCCR_in[PERF_APU_ID+1] = apu_contention_i;
-     assign PCCR_in[PERF_APU_ID+2] = apu_dep_i & ~apu_contention_i;
-     assign PCCR_in[PERF_APU_ID+3] = apu_wb_i;
+  // HPM Events
+  logic [NUM_HPMEVENTS-1:0] hpm_events;
+  logic id_valid_q;
+  always_comb begin
+    hpm_events = '0;
+    hpm_events[1]  = ld_stall_i & id_valid_q;                       // nr of load use hazards
+    hpm_events[2]  = jr_stall_i & id_valid_q;                       // nr of jump register hazards
+    hpm_events[3]  = imiss_i & (~pc_set_i);                         // cycles waiting for instruction fetches, excluding jumps and branches
+    hpm_events[4]  = mem_load_i;                                    // nr of loads
+    hpm_events[5]  = mem_store_i;                                   // nr of stores
+    hpm_events[6]  = jump_i                     & id_valid_q;       // nr of jumps (unconditional)
+    hpm_events[7]  = branch_i                   & id_valid_q;       // nr of branches (conditional)
+    hpm_events[8]  = branch_i & branch_taken_i  & id_valid_q;       // nr of taken branches (conditional)
+    hpm_events[9] = id_valid_i & is_decoding_i & is_compressed_i;   // compressed instruction counter
+    hpm_events[10] = pipeline_stall_i;                              // extra cycles from ELW
+    hpm_events[11] = !APU ? 1'b0 : apu_typeconflict_i & ~apu_dep_i;
+    hpm_events[12] = !APU ? 1'b0 : apu_contention_i;
+    hpm_events[13] = !APU ? 1'b0 : apu_dep_i & ~apu_contention_i;
+    hpm_events[14] = !APU ? 1'b0 : apu_wb_i;
+    hpm_events[NUM_HPMEVENTS-1:NUM_INTERNAL_EVENTS] = ext_counters_i;
   end
-
-  // assign external performance counters
-  generate
-    genvar i;
-    for(i = 0; i < N_EXT_CNT; i++)
-    begin
-      assign PCCR_in[PERF_EXT_ID + i] = ext_counters_i[i];
-    end
-  endgenerate
-
-  // address decoder for performance counter registers
-  always_comb
-  begin
-    is_pccr      = 1'b0;
-    is_pcmr      = 1'b0;
-    is_pcer      = 1'b0;
-    pccr_all_sel = 1'b0;
-    pccr_index   = '0;
-    perf_rdata   = '0;
-
-    // only perform csr access if we actually care about the read data
-    if (csr_access_i) begin
-      unique case (csr_addr_i)
-        PCER_USER, PCER_MACHINE: begin
-          is_pcer = 1'b1;
-          perf_rdata[N_PERF_COUNTERS-1:0] = PCER_q;
-        end
-        PCMR_USER, PCMR_MACHINE: begin
-          is_pcmr = 1'b1;
-          perf_rdata[1:0] = PCMR_q;
-        end
-        12'h79F: begin // last pccr register selects all
-          is_pccr = 1'b1;
-          pccr_all_sel = 1'b1;
-        end
-        default:;
-      endcase
-
-      // look for 780 to 79F, Performance Counter Counter Registers
-      if (csr_addr_i[11:5] == 7'b0111100) begin
-        is_pccr     = 1'b1;
-
-        pccr_index = csr_addr_i[4:0];
-`ifdef  ASIC_SYNTHESIS
-        perf_rdata = PCCR_q[0];
-`else
-        perf_rdata = csr_addr_i[4:0] < N_PERF_COUNTERS ? PCCR_q[csr_addr_i[4:0]] : '0;
-`endif
-      end
-    end
-  end
-
-
-  // performance counter counter update logic
-`ifdef ASIC_SYNTHESIS
-  // for synthesis we just have one performance counter register
-  assign PCCR_inc[0] = (|(PCCR_in & PCER_q)) & PCMR_q[0];
-
-  always_comb
-  begin
-    PCCR_n[0]   = PCCR_q[0];
-
-    if ((PCCR_inc_q[0] == 1'b1) && ((PCCR_q[0] != 32'hFFFFFFFF) || (PCMR_q[1] == 1'b0)))
-      PCCR_n[0] = PCCR_q[0] + 1;
-
-    if (is_pccr == 1'b1) begin
-      unique case (csr_op_i)
-        CSR_OP_NONE:   ;
-        CSR_OP_WRITE:  PCCR_n[0] = csr_wdata_i;
-        CSR_OP_SET:    PCCR_n[0] = csr_wdata_i | PCCR_q[0];
-        CSR_OP_CLEAR:  PCCR_n[0] = csr_wdata_i & ~(PCCR_q[0]);
-      endcase
-    end
-  end
-`else
-  always_comb
-  begin
-    for(int i = 0; i < N_PERF_COUNTERS; i++)
-    begin : PERF_CNT_INC
-      PCCR_inc[i] = PCCR_in[i] & PCER_q[i] & PCMR_q[0];
-
-      PCCR_n[i]   = PCCR_q[i];
-
-      if ((PCCR_inc_q[i] == 1'b1) && ((PCCR_q[i] != 32'hFFFFFFFF) || (PCMR_q[1] == 1'b0)))
-        PCCR_n[i] = PCCR_q[i] + 1;
-
-      if (is_pccr == 1'b1 && (pccr_all_sel == 1'b1 || pccr_index == i)) begin
-        unique case (csr_op_i)
-          CSR_OP_NONE:   ;
-          CSR_OP_WRITE:  PCCR_n[i] = csr_wdata_i;
-          CSR_OP_SET:    PCCR_n[i] = csr_wdata_i | PCCR_q[i];
-          CSR_OP_CLEAR:  PCCR_n[i] = csr_wdata_i & ~(PCCR_q[i]);
-        endcase
-      end
-    end
-  end
-`endif
-
-  // update PCMR and PCER
-  always_comb
-  begin
-    PCMR_n = PCMR_q;
-    PCER_n = PCER_q;
-
-    if (is_pcmr) begin
-      unique case (csr_op_i)
-        CSR_OP_NONE:   ;
-        CSR_OP_WRITE:  PCMR_n = csr_wdata_i[1:0];
-        CSR_OP_SET:    PCMR_n = csr_wdata_i[1:0] | PCMR_q;
-        CSR_OP_CLEAR:  PCMR_n = csr_wdata_i[1:0] & ~(PCMR_q);
-      endcase
-    end
-
-    if (is_pcer) begin
-      unique case (csr_op_i)
-        CSR_OP_NONE:   ;
-        CSR_OP_WRITE:  PCER_n = csr_wdata_i[N_PERF_COUNTERS-1:0];
-        CSR_OP_SET:    PCER_n = csr_wdata_i[N_PERF_COUNTERS-1:0] | PCER_q;
-        CSR_OP_CLEAR:  PCER_n = csr_wdata_i[N_PERF_COUNTERS-1:0] & ~(PCER_q);
-      endcase
-    end
-  end
-
-  // Performance Counter Registers
-  always_ff @(posedge clk, negedge rst_n)
-  begin
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin
+    if (!rst_n) begin
       id_valid_q <= 1'b0;
+    end else begin
+      id_valid_q <= id_valid_i;
+    end
+  end
 
-      PCER_q <= '0;
-      PCMR_q <= 2'h3;
-
-      for(int i = 0; i < N_PERF_REGS; i++)
-      begin
-        PCCR_q[i]     <= '0;
-        PCCR_inc_q[i] <= '0;
+  // Count HPM events in simulation, so no software modifications are required to display all the
+  // accumulated value of all HPM event counters at the end of simulation.
+`ifndef TARGET_SYNTHESIS
+// pragma translate_off
+  if (SIM_COUNT_HPMEVENTS) begin : gen_sim_count_hpmevents
+    typedef logic [31:0] sim_cnt_t;
+    sim_cnt_t [NUM_HPMEVENTS-1:1] sim_cnt_d, sim_cnt_q;
+    always_ff @(posedge clk, negedge rst_n) begin
+      if (!rst_n) begin
+        sim_cnt_q <= '0;
+      end else begin
+        sim_cnt_q <= sim_cnt_d;
       end
     end
-    else
-    begin
-      id_valid_q <= id_valid_i;
-
-      PCER_q <= PCER_n;
-      PCMR_q <= PCMR_n;
-
-      for(int i = 0; i < N_PERF_REGS; i++)
-      begin
-        PCCR_q[i]     <= PCCR_n[i];
-        PCCR_inc_q[i] <= PCCR_inc[i];
+    for (genvar i = 1; i < NUM_HPMEVENTS; i++) begin : gen_sim_cnt_d
+      always_comb begin
+        sim_cnt_d[i] = sim_cnt_q[i];
+        if (hpm_events[i]) begin
+          sim_cnt_d[i]++;
+        end
       end
+    end
+    final begin
+      for (int unsigned i = 1; i < NUM_HPMEVENTS; i++) begin
+        $display("%m: counter for hpm_event[%02d] = %0d", i, sim_cnt_q[i]);
+      end
+    end
+  end
+// pragma translate_on
+`endif
 
+  // M-Mode HPM Inhibit Register
+  for (genvar i = 0; i < 32; i++) begin : gen_mcountinhibit
+    if (i == 1 || // counter at index 1 not implemented
+        i >= (NUM_MHPMCOUNTERS + 3) // programmable counters start at index 3
+    ) begin : gen_not_implemented
+      assign mcountinhibit_q[i] = 1'b0;
+    end else begin : gen_implemented
+      always_ff @(posedge clk, negedge rst_n) begin
+        if (!rst_n) begin
+          mcountinhibit_q[i] <= 1'b1; // disabled after reset
+        end else begin
+          mcountinhibit_q[i] <= mcountinhibit_d[i];
+        end
+      end
+    end
+  end
+
+  // M-Mode HPM Inhibit CSR Write Logic
+  always_comb begin
+    if (csr_we_int && csr_addr_i == CSR_MCOUNTINHIBIT) begin
+      mcountinhibit_d = csr_wdata_int;
+    end else begin
+      mcountinhibit_d = mcountinhibit_q;
+    end
+  end
+
+  // M-Mode HPM Event Registers
+  for (genvar i = 0; i < 32; i++) begin : gen_mhpmevent
+    // programmable HPM events start at index 3
+    if (i < 3 || i >= (NUM_MHPMCOUNTERS + 3)) begin : gen_not_implemented
+      assign mhpmevent_q[i] = '0;
+    end else begin : gen_implemented
+      always_ff @(posedge clk, negedge rst_n) begin
+        if (!rst_n) begin
+          mhpmevent_q[i] <= '0;
+        end else begin
+          mhpmevent_q[i] <= mhpmevent_d[i];
+        end
+      end
+    end
+  end
+
+  // M-Mode HPM Event CSR Write Logic
+  for (genvar i = 0; i < 32; i++) begin : gen_mhpmevent_d
+    if (i == 1 || i >= (NUM_MHPMCOUNTERS + 3)) begin : gen_not_implemented
+      assign mhpmevent_d[i] = '0;
+    end else begin : gen_implemented
+      always_comb begin
+        if (csr_we_int && csr_addr_i == (CSR_MHPMEVENT3 + i - 3)) begin
+          mhpmevent_d[i] = csr_wdata_int;
+        end else begin
+          mhpmevent_d[i] = mhpmevent_q[i];
+        end
+      end
+    end
+  end
+
+  // M-Mode HPM Counter Registers
+  for (genvar i = 0; i < 32; i++) begin : gen_mhpmcounter
+    if (i == 1 || // counter at index 1 not implemented
+        i >= (NUM_MHPMCOUNTERS + 3) // programmable counters start at index 3
+    ) begin : gen_not_implemented
+      assign mhpmcounter_q[i] = '0;
+    end else begin : gen_implemented
+      always_ff @(posedge clk, negedge rst_n) begin
+        if (!rst_n) begin
+          mhpmcounter_q[i] <= '0;
+        end else begin
+          if (mhpmcounter_write_lower[i]) begin
+            mhpmcounter_q[i][31:0] <= csr_wdata_int;
+          end else if (mhpmcounter_increment[i]) begin
+            mhpmcounter_q[i] <= mhpmcounter_q[i] + 1;
+          end
+        end
+      end
+    end
+  end
+
+  // M-Mode HPM Counter CSR Write Logic
+  for (genvar i = 0; i < 32; i++) begin : gen_mhpmcounter_write
+    if (i == 1 || // counter at index 1 not implemented
+        i >= (NUM_MHPMCOUNTERS + 3) // programmable counters start at index 3
+    ) begin : gen_not_implemented
+      assign mhpmcounter_write_lower[i] = 1'b0;
+    end else begin : gen_implemented
+      assign mhpmcounter_write_lower[i] = csr_we_int && (csr_addr_i == (CSR_MCYCLE + i));
+    end
+  end
+
+  // M-Mode HPM Counter Increment Logic
+  for (genvar i = 0; i < 32; i++) begin : gen_mhpmcounter_increment
+    if (i == 0) begin : gen_mcycle
+      assign mhpmcounter_increment[i] = ~mcountinhibit_q[i];
+    end else if (i == 1) begin : gen_mtime_not_implemented
+      assign mhpmcounter_increment[i] = 1'b0;
+    end else if (i == 2) begin : gen_minstret
+      assign mhpmcounter_increment[i] = ~mcountinhibit_q[i] & id_valid_i & is_decoding_i;
+    end else if (i < (NUM_MHPMCOUNTERS + 3)) begin : gen_mhpmcounter
+      assign mhpmcounter_increment[i] = ~mcountinhibit_q[i] & hpm_events[mhpmevent_q[i]];
+    end else begin : gen_not_implemented
+      assign mhpmcounter_increment[i] = 1'b0;
+    end
+  end
+
+  // M-Mode HPM Enable Register
+  for (genvar i = 0; i < 32; i++) begin : gen_mcounteren
+    if (i == 1 || // counter at index 1 not implemented
+        i >= (NUM_MHPMCOUNTERS + 3) // programmable counters start at index 3
+    ) begin : gen_not_implemented
+      assign mcounteren_q[i] = 1'b0;
+    end else begin : gen_implemented
+      always_ff @(posedge clk, negedge rst_n) begin
+        if (!rst_n) begin
+          mcounteren_q[i] <= 1'b0;
+        end else begin
+          mcounteren_q[i] <= mcounteren_d[i];
+        end
+      end
+    end
+  end
+
+  // M-Mode HPM Enable CSR Write Logic
+  always_comb begin
+    if (csr_we_int && csr_addr_i == CSR_MCOUNTEREN) begin
+      mcounteren_d = csr_wdata_int;
+    end else begin
+      mcounteren_d = mcounteren_q;
     end
   end
 
 endmodule
-

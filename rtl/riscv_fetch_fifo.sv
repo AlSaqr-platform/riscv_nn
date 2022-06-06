@@ -80,7 +80,6 @@ module riscv_fetch_fifo
 
   assign unaligned_is_compressed    = rdata[17:16] != 2'b11;
   assign aligned_is_compressed      = rdata[1:0] != 2'b11;
-
   assign unaligned_is_compressed_st = valid_Q[0] && rdata_Q[0][17:16] != 2'b11;
   assign aligned_is_compressed_st   = valid_Q[0] && rdata_Q[0][1:0] != 2'b11;
 
@@ -107,6 +106,7 @@ module riscv_fetch_fifo
       out_valid_o = valid;
     end
   end
+
   assign out_addr_o    = (valid_Q[0]) ? addr_Q[0] : in_addr_i;
   assign out_is_hwlp_o = (valid_Q[0]) ? is_hwlp_Q[0] : in_is_hwlp_i;
 
@@ -114,6 +114,7 @@ module riscv_fetch_fifo
   always_comb
   begin
     out_valid_stored_o = 1'b1;
+
     if (out_addr_o[1] && (~is_hwlp_Q[1])) begin
       if (unaligned_is_compressed_st)
         out_valid_stored_o = 1'b1;

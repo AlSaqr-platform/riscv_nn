@@ -28,24 +28,19 @@
 //                 and the FPU                                                //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-`timescale 1ps/1ps
-
-import apu_core_package::*;
 
 `include "riscv_config.sv"
 
-import riscv_defines::*;
-
-module riscv_core
+module riscv_core import apu_core_package::*; import riscv_defines::*;
 #(
   parameter N_EXT_PERF_COUNTERS =  0,
   parameter INSTR_RDATA_WIDTH   = 32,
   parameter PULP_SECURE         =  0,
   parameter N_PMP_ENTRIES       = 16,
   parameter USE_PMP             =  1, //if PULP_SECURE is 1, you can still not use the PMP
-  parameter PULP_CLUSTER        =  0,
+  parameter PULP_CLUSTER        =  1,
   parameter FPU                 =  0,
-  parameter Zfinx               =  1,
+  parameter Zfinx               =  0,
   parameter FP_DIVSQRT          =  0,
   parameter SHARED_FP           =  0,
   parameter SHARED_DSP_MULT     =  0,
@@ -57,43 +52,42 @@ module riscv_core
   parameter APU_WOP_CPU         =  6,
   parameter APU_NDSFLAGS_CPU    = 15,
   parameter APU_NUSFLAGS_CPU    =  5,
-  parameter DM_HaltAddress      = 32'h1A110800,
-  parameter CORE_ID             = 0,
-  parameter N_HWLP              = 2
+  parameter DM_HaltAddress      = 32'h1A110800
 )
 (
   // Clock and Reset
-  input logic                            clk_i,
-  input logic                            rst_ni,
+  input  logic        clk_i,
+  input  logic        rst_ni,
 
-  input logic                            clock_en_i, // enable clock, otherwise it is gated
-  input logic                            test_en_i, // enable all clock gates for testing
+  input  logic        clock_en_i,    // enable clock, otherwise it is gated
+  input  logic        test_en_i,     // enable all clock gates for testing
 
-  input logic                            fregfile_disable_i, // disable the fp regfile, using int regfile instead
+  input  logic        fregfile_disable_i,  // disable the fp regfile, using int regfile instead
 
   // Core ID, Cluster ID and boot address are considered more or less static
-  input logic [31:0]                     boot_addr_i,
-  input logic [ 3:0]                     core_id_i,
-  input logic [ 5:0]                     cluster_id_i,
+  input  logic [31:0] boot_addr_i,
+  input  logic [ 3:0] core_id_i,
+  input  logic [ 5:0] cluster_id_i,
 
   // Instruction memory interface
-  output logic                           instr_req_o,
-  input logic                            instr_gnt_i,
-  input logic                            instr_rvalid_i,
-  output logic [31:0]                    instr_addr_o,
-  input logic [INSTR_RDATA_WIDTH-1:0]    instr_rdata_i,
+  output logic                         instr_req_o,
+  input  logic                         instr_gnt_i,
+  input  logic                         instr_rvalid_i,
+  output logic                  [31:0] instr_addr_o,
+  input  logic [INSTR_RDATA_WIDTH-1:0] instr_rdata_i,
 
   // Data memory interface
-  output logic                           data_req_o,
-  input logic                            data_gnt_i,
-  input logic                            data_rvalid_i,
-  output logic                           data_we_o,
-  output logic [3:0]                     data_be_o,
-  output logic [31:0]                    data_addr_o,
-  output logic [31:0]                    data_wdata_o,
-  input logic [31:0]                     data_rdata_i,
-  
-  output logic                           data_unaligned_o, 
+  output logic        data_req_o,
+  input  logic        data_gnt_i,
+  input  logic        data_rvalid_i,
+  output logic        data_we_o,
+  output logic [3:0]  data_be_o,
+  output logic [31:0] data_addr_o,
+  output logic [31:0] data_wdata_o,
+  input  logic [31:0] data_rdata_i,
+
+  output logic [5:0]  data_atop_o,
+  output logic        data_unaligned_o,
 
   // apu-interconnect
   // handshake signals
@@ -111,25 +105,26 @@ module riscv_core
   input logic [APU_NUSFLAGS_CPU-1:0]     apu_master_flags_i,
 
   // Interrupt inputs
-  input logic                            irq_i, // level sensitive IR lines
-  input logic [4:0]                      irq_id_i,
-  output logic                           irq_ack_o,
-  output logic [4:0]                     irq_id_o,
-  input logic                            irq_sec_i,
+  input  logic        irq_i,                 // level sensitive IR lines
+  input  logic [4:0]  irq_id_i,
+  output logic        irq_ack_o,
+  output logic [4:0]  irq_id_o,
+  input  logic        irq_sec_i,
 
-  output logic                           sec_lvl_o,
+  output logic        sec_lvl_o,
 
   // Debug Interface
-  input logic                            debug_req_i,
+  input  logic        debug_req_i,
 
 
   // CPU Control Signals
-  input logic                            fetch_enable_i,
-  output logic                           core_busy_o,
+  input  logic        fetch_enable_i,
+  output logic        core_busy_o,
 
-  input logic [N_EXT_PERF_COUNTERS-1:0]  ext_perf_counters_i
+  input  logic [N_EXT_PERF_COUNTERS-1:0] ext_perf_counters_i
 );
 
+  localparam N_HWLP      = 2;
   localparam N_HWLP_BITS = $clog2(N_HWLP);
   localparam APU         = ((SHARED_DSP_MULT==1) | (SHARED_INT_DIV==1) | (FPU==1)) ? 1 : 0;
 
@@ -152,12 +147,6 @@ module riscv_core
   logic              trap_addr_mux;
   logic              lsu_load_err;
   logic              lsu_store_err;
-  logic [2:0]        lsu_tosprw_ex;  //RNN_EXT
-  logic [1:0]        lsu_tospra_ex; //RNN_EXT
-
-  logic              dot_spr_operand_ex; // added for status-based MACLOAD
-  logic              update_w_id;
-  logic              update_a_id;
 
   // ID performance counter signals
   logic        is_decoding;
@@ -188,17 +177,12 @@ module riscv_core
   logic [ 4:0] bmask_a_ex;
   logic [ 4:0] bmask_b_ex;
   logic [ 1:0] imm_vec_ext_ex;
-
-  ivec_mode_fmt alu_vec_mode_ex; //Modified for ivec sb : changed from logic to ivec_mode_fmt
-  logic         ivec_op_ex;      //Added for ivec sb
-
+  logic [ 1:0] alu_vec_mode_ex;
   logic        alu_is_clpx_ex, alu_is_subrot_ex;
   logic [ 1:0] alu_clpx_shift_ex;
 
   // Multiplier Control
-
-  mult_op_type mult_operator_ex; //Modified for ivec sb : changed from logic to mult_opt_type
-
+  logic [ 2:0] mult_operator_ex;
   logic [31:0] mult_operand_a_ex;
   logic [31:0] mult_operand_b_ex;
   logic [31:0] mult_operand_c_ex;
@@ -206,14 +190,8 @@ module riscv_core
   logic        mult_sel_subword_ex;
   logic [ 1:0] mult_signed_mode_ex;
   logic [ 4:0] mult_imm_ex;
-  logic [31:0] mult_dot_op_h_a_ex;
-  logic [31:0] mult_dot_op_h_b_ex;
-  logic [31:0] mult_dot_op_b_a_ex;
-  logic [31:0] mult_dot_op_b_b_ex;
-  logic [31:0] mult_dot_op_n_a_ex;
-  logic [31:0] mult_dot_op_n_b_ex;
-  logic [31:0] mult_dot_op_c_a_ex;
-  logic [31:0] mult_dot_op_c_b_ex;
+  logic [31:0] mult_dot_op_a_ex;
+  logic [31:0] mult_dot_op_b_ex;
   logic [31:0] mult_dot_op_c_ex;
   logic [ 1:0] mult_dot_signed_ex;
   logic        mult_is_clpx_ex_o;
@@ -252,12 +230,11 @@ module riscv_core
   // Register Write Control
   logic [5:0]  regfile_waddr_ex;
   logic        regfile_we_ex;
-  logic [5:0]  regfile_waddr_fw_wb;        // From WB to ID RNN_EXT prev fw_wb_o
+  logic [5:0]  regfile_waddr_fw_wb_o;        // From WB to ID
   logic        regfile_we_wb;
   logic [31:0] regfile_wdata;
 
   logic [5:0]  regfile_alu_waddr_ex;
-  logic [5:0]  regfile_alu_waddr2_ex; //RNN_EXT
   logic        regfile_alu_we_ex;
 
   logic [5:0]  regfile_alu_waddr_fw;
@@ -265,12 +242,6 @@ module riscv_core
   logic [31:0] regfile_alu_wdata_fw;
 
   // CSR control
-  ivec_mode_fmt                  ivec_fmt_csr;    //Added ivec sb : signal that goes from csr -> id_stage : used to decide the vectorial mode of the istruction
-  logic [NBITS_MIXED_CYCLES-1:0] current_cycle_csr;
-  logic [NBITS_MAX_KER-1:0]      skip_size_csr;  //Added for ivec sb : used by mpc to know when to update next cycle
-  logic                          sb_legacy_mode; //Added for sb : Legacy MODE
-  
-
   logic        csr_access_ex;
   logic  [1:0] csr_op_ex;
   logic [23:0] mtvec, utvec;
@@ -283,19 +254,14 @@ module riscv_core
   logic [31:0] csr_wdata;
   PrivLvl_t    current_priv_lvl;
 
-  // CSR additional signal for status-based MACLOAD
-  logic [1:0]  csr_macl_op;
-  logic [11:0] csr_macl_addr;
-  logic [31:0] csr_macl_wdata;
-  logic [31:0] a_address, w_address;
-  logic [31:0] a_stride, w_stride;
-  logic [31:0] a_rollback, w_rollback;
-  logic [31:0] a_skip, w_skip;
-  logic macl_a_rstn;
-  logic macl_w_rstn;
+  // Stack Protection
+  logic        stack_access;
+  logic [31:0] stack_base,
+               stack_limit;
 
   // Data Memory Control:  From ID stage (id-ex pipe) <--> load store unit
   logic        data_we_ex;
+  logic [5:0]  data_atop_ex;
   logic [1:0]  data_type_ex;
   logic [1:0]  data_sign_ext_ex;
   logic [1:0]  data_reg_offset_ex;
@@ -304,9 +270,7 @@ module riscv_core
   logic        data_misaligned_ex;
 
   logic [31:0] lsu_rdata;
-  logic        data_rvalid_ex;
 
-  logic        loadComputeVLIW_ex; //RNN_EXT
   // stall control
   logic        halt_if;
   logic        id_ready;
@@ -384,10 +348,6 @@ module riscv_core
   logic [31:0]                      instr_addr_pmp;
   logic                             instr_err_pmp;
 
-
-  // added for ivec sb : Signals to write to csr for mixed precision
-  logic [NBITS_MIXED_CYCLES-1:0]   mpc_next_cycle;
-  logic                            mux_sel_wcsr;      
 
   //Simchecker signal
   logic is_interrupt;
@@ -655,9 +615,6 @@ module riscv_core
     .pc_ex_o                      ( pc_ex                ),
 
     .alu_en_ex_o                  ( alu_en_ex            ),
-
-    .ivec_op_ex_o                 ( ivec_op_ex           ), //Added for ivec sb
-
     .alu_operator_ex_o            ( alu_operator_ex      ),
     .alu_operand_a_ex_o           ( alu_operand_a_ex     ),
     .alu_operand_b_ex_o           ( alu_operand_b_ex     ),
@@ -675,7 +632,6 @@ module riscv_core
 
     .regfile_alu_we_ex_o          ( regfile_alu_we_ex    ),
     .regfile_alu_waddr_ex_o       ( regfile_alu_waddr_ex ),
-    .regfile_alu_waddr2_ex_o       ( regfile_alu_waddr2_ex ), //RNN_EXT
 
     // MUL
     .mult_operator_ex_o           ( mult_operator_ex     ), // from ID to EX stage
@@ -686,20 +642,14 @@ module riscv_core
     .mult_operand_b_ex_o          ( mult_operand_b_ex    ), // from ID to EX stage
     .mult_operand_c_ex_o          ( mult_operand_c_ex    ), // from ID to EX stage
     .mult_imm_ex_o                ( mult_imm_ex          ), // from ID to EX stage
-    .mult_dot_op_h_a_ex_o           ( mult_dot_op_h_a_ex     ), // from ID to EX stage
-    .mult_dot_op_h_b_ex_o           ( mult_dot_op_h_b_ex     ), // from ID to EX stage
-    .mult_dot_op_b_a_ex_o           ( mult_dot_op_b_a_ex     ), // from ID to EX stage
-    .mult_dot_op_b_b_ex_o           ( mult_dot_op_b_b_ex     ), // from ID to EX stage
-    .mult_dot_op_n_a_ex_o           ( mult_dot_op_n_a_ex     ), // from ID to EX stage
-    .mult_dot_op_n_b_ex_o           ( mult_dot_op_n_b_ex     ), // from ID to EX stage
-    .mult_dot_op_c_a_ex_o           ( mult_dot_op_c_a_ex     ), // from ID to EX stage
-    .mult_dot_op_c_b_ex_o           ( mult_dot_op_c_b_ex     ), // from ID to EX stage
+
+    .mult_dot_op_a_ex_o           ( mult_dot_op_a_ex     ), // from ID to EX stage
+    .mult_dot_op_b_ex_o           ( mult_dot_op_b_ex     ), // from ID to EX stage
     .mult_dot_op_c_ex_o           ( mult_dot_op_c_ex     ), // from ID to EX stage
     .mult_dot_signed_ex_o         ( mult_dot_signed_ex   ), // from ID to EX stage
     .mult_is_clpx_ex_o            ( mult_is_clpx_ex      ), // from ID to EX stage
     .mult_clpx_shift_ex_o         ( mult_clpx_shift_ex   ), // from ID to EX stage
     .mult_clpx_img_ex_o           ( mult_clpx_img_ex     ), // from ID to EX stage
-    .dot_spr_operand_ex_o         ( dot_spr_operand_ex   ),
 
     // FPU
     .frm_i                        ( frm_csr                 ),
@@ -721,13 +671,6 @@ module riscv_core
     .apu_write_dep_i              ( apu_write_dep           ),
     .apu_perf_dep_o               ( perf_apu_dep            ),
     .apu_busy_i                   ( apu_busy                ),
-    
-    .csr_ivec_fmt_i               ( ivec_fmt_csr         ), //added ivec sb : needed inside the decoder to update the VEC_MODE
-    .csr_current_cycle_i          ( current_cycle_csr    ), //added for ivec sb : used by the mixed precision controller to know at what cycle we're currently at
-    .csr_skip_size_i              ( skip_size_csr        ),
-    .next_cycle_ex_o              ( mpc_next_cycle       ), //added for ivec sb : Used to write next cycle into csr
-    .mux_sel_wcsr_ex_o            ( mux_sel_wcsr         ), //added for ivec sb : used to override normal writing signals on csr
-    .sb_legacy_i                  ( sb_legacy_mode       ), //Added for sb : Legacy MODE
 
     // CSR ID/EX
     .csr_access_ex_o              ( csr_access_ex        ),
@@ -745,6 +688,9 @@ module riscv_core
 
     .csr_save_cause_o             ( csr_save_cause       ),
 
+    // Stack protection
+    .stack_access_o               ( stack_access         ),
+
     // hardware loop signals to IF hwlp controller
     .hwlp_start_o                 ( hwlp_start           ),
     .hwlp_end_o                   ( hwlp_end             ),
@@ -758,6 +704,7 @@ module riscv_core
     // LSU
     .data_req_ex_o                ( data_req_ex          ), // to load store unit
     .data_we_ex_o                 ( data_we_ex           ), // to load store unit
+    .atop_ex_o                    ( data_atop_ex         ),
     .data_type_ex_o               ( data_type_ex         ), // to load store unit
     .data_sign_ext_ex_o           ( data_sign_ext_ex     ), // to load store unit
     .data_reg_offset_ex_o         ( data_reg_offset_ex   ), // to load store unit
@@ -770,11 +717,6 @@ module riscv_core
     .data_err_i                   ( data_err_pmp         ),
     .data_err_ack_o               ( data_err_ack         ),
 
-    .lsu_tosprw_ex_o              ( lsu_tosprw_ex        ), //RNN_EXT
-    .lsu_tospra_ex_o              ( lsu_tospra_ex        ), //RNN_EXT
-    .loadComputeVLIW_ex_i         ( loadComputeVLIW_ex   ), //RNN_EXT
-    .update_w_id_o                ( update_w_id          ), //added for status-based MACLOAD
-    .update_a_id_o                ( update_a_id          ), //added for status-based MACLOAD
 
     // Interrupt Signals
     .irq_i                        ( irq_i                ), // incoming interrupts
@@ -795,7 +737,7 @@ module riscv_core
     .debug_ebreaku_i              ( debug_ebreaku        ),
 
     // Forward Signals
-    .regfile_waddr_wb_i           ( regfile_waddr_fw_wb  ),  // Write address ex-wb pipeline //RNN_EXT prev fw_wb_o
+    .regfile_waddr_wb_i           ( regfile_waddr_fw_wb_o),  // Write address ex-wb pipeline
     .regfile_we_wb_i              ( regfile_we_wb        ),  // write enable for the register file
     .regfile_wdata_wb_i           ( regfile_wdata        ),  // write data to commit in the register file
 
@@ -854,8 +796,6 @@ module riscv_core
     .alu_is_subrot_i            ( alu_is_subrot_ex             ), // from ID/Ex pipe registers
     .alu_clpx_shift_i           ( alu_clpx_shift_ex            ), // from ID/EX pipe registers
 
-    .ivec_op_i                   ( ivec_op_ex                  ), //Added for ivec sb
-
     // Multipler
     .mult_operator_i            ( mult_operator_ex             ), // from ID/EX pipe registers
     .mult_operand_a_i           ( mult_operand_a_ex            ), // from ID/EX pipe registers
@@ -865,25 +805,16 @@ module riscv_core
     .mult_sel_subword_i         ( mult_sel_subword_ex          ), // from ID/EX pipe registers
     .mult_signed_mode_i         ( mult_signed_mode_ex          ), // from ID/EX pipe registers
     .mult_imm_i                 ( mult_imm_ex                  ), // from ID/EX pipe registers
-    .mult_dot_op_h_a_i            ( mult_dot_op_h_a_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_h_b_i            ( mult_dot_op_h_b_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_b_a_i            ( mult_dot_op_b_a_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_b_b_i            ( mult_dot_op_b_b_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_n_a_i            ( mult_dot_op_n_a_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_n_b_i            ( mult_dot_op_n_b_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_c_a_i            ( mult_dot_op_c_a_ex             ), // from ID/EX pipe registers
-    .mult_dot_op_c_b_i            ( mult_dot_op_c_b_ex             ), // from ID/EX pipe registers
+    .mult_dot_op_a_i            ( mult_dot_op_a_ex             ), // from ID/EX pipe registers
+    .mult_dot_op_b_i            ( mult_dot_op_b_ex             ), // from ID/EX pipe registers
     .mult_dot_op_c_i            ( mult_dot_op_c_ex             ), // from ID/EX pipe registers
     .mult_dot_signed_i          ( mult_dot_signed_ex           ), // from ID/EX pipe registers
     .mult_is_clpx_i             ( mult_is_clpx_ex              ), // from ID/EX pipe registers
     .mult_clpx_shift_i          ( mult_clpx_shift_ex           ), // from ID/EX pipe registers
     .mult_clpx_img_i            ( mult_clpx_img_ex             ), // from ID/EX pipe registers
-    .dot_spr_operand_i          ( dot_spr_operand_ex           ),
 
     .mult_multicycle_o          ( mult_multicycle              ), // to ID/EX pipe registers
-    .current_cycle_i            ( current_cycle_csr            ), // added for ivec sb : Current cycle for mixed preision
-    
-    .computeLoadVLIW_ex_o       (loadComputeVLIW_ex            ), //RNN_EXT
+
     // FPU
     .fpu_prec_i                 ( fprec_csr                    ),
     .fpu_fflags_o               ( fflags                       ),
@@ -924,9 +855,7 @@ module riscv_core
 
     .lsu_en_i                   ( data_req_ex                  ),
     .lsu_rdata_i                ( lsu_rdata                    ),
-    .data_rvalid_ex_i           ( data_rvalid_i                ),
-    .lsu_tosprw_ex_i            ( lsu_tosprw_ex                ), //RNN_EXT 
-    .lsu_tospra_ex_i            ( lsu_tospra_ex                ), //RNN_EXT
+
     // interface with CSRs
     .csr_access_i               ( csr_access_ex                ),
     .csr_rdata_i                ( csr_rdata                    ),
@@ -934,14 +863,13 @@ module riscv_core
     // From ID Stage: Regfile control signals
     .branch_in_ex_i             ( branch_in_ex                 ),
     .regfile_alu_waddr_i        ( regfile_alu_waddr_ex         ),
-    .regfile_alu_waddr2_i       ( regfile_alu_waddr2_ex         ), //RNN_EXT
     .regfile_alu_we_i           ( regfile_alu_we_ex            ),
 
     .regfile_waddr_i            ( regfile_waddr_ex             ),
     .regfile_we_i               ( regfile_we_ex                ),
 
     // Output of ex stage pipeline
-    .regfile_waddr_wb_o         ( regfile_waddr_fw_wb          ), //RNN_EXT, prev fw_wb_o
+    .regfile_waddr_wb_o         ( regfile_waddr_fw_wb_o        ),
     .regfile_we_wb_o            ( regfile_we_wb                ),
     .regfile_wdata_wb_o         ( regfile_wdata                ),
 
@@ -955,7 +883,6 @@ module riscv_core
     .regfile_alu_wdata_fw_o     ( regfile_alu_wdata_fw         ),
 
     // stall control
-    .is_decoding_i              ( is_decoding                  ),
     .lsu_ready_ex_i             ( lsu_ready_ex                 ),
     .lsu_err_i                  ( data_err_pmp                 ),
 
@@ -976,8 +903,8 @@ module riscv_core
 
   riscv_load_store_unit  load_store_unit_i
   (
-    .clk                   ( clk                ),
-    .rst_n                 ( rst_ni             ),
+    .clk_i                 ( clk                ),
+    .rst_ni                ( rst_ni             ),
 
     //output to data memory
     .data_req_o            ( data_req_pmp       ),
@@ -987,12 +914,14 @@ module riscv_core
 
     .data_addr_o           ( data_addr_pmp      ),
     .data_we_o             ( data_we_o          ),
+    .data_atop_o           ( data_atop_o        ),
     .data_be_o             ( data_be_o          ),
     .data_wdata_o          ( data_wdata_o       ),
     .data_rdata_i          ( data_rdata_i       ),
 
     // signal from ex stage
     .data_we_ex_i          ( data_we_ex         ),
+    .data_atop_ex_i        ( data_atop_ex       ),
     .data_type_ex_i        ( data_type_ex       ),
     .data_wdata_ex_i       ( alu_operand_c_ex   ),
     .data_reg_offset_ex_i  ( data_reg_offset_ex ),
@@ -1004,62 +933,24 @@ module riscv_core
     .operand_b_ex_i        ( alu_operand_b_ex   ),
     .addr_useincr_ex_i     ( useincr_addr_ex    ),
 
-    .update_a_ex_i         ( lsu_tospra_ex[0]   ),
-    .update_w_ex_i         ( lsu_tosprw_ex[0]   ),
-    .dot_spr_operand_ex_i  ( dot_spr_operand_ex ),
-
     .data_misaligned_ex_i  ( data_misaligned_ex ), // from ID/EX pipeline
     .data_misaligned_o     ( data_misaligned    ),
+
+    // stack protection
+    .stack_access_i        ( stack_access       ),
+    .stack_base_i          ( stack_base         ),
+    .stack_limit_i         ( stack_limit        ),
 
     // control signals
     .lsu_ready_ex_o        ( lsu_ready_ex       ),
     .lsu_ready_wb_o        ( lsu_ready_wb       ),
 
     .ex_valid_i            ( ex_valid           ),
-    .busy_o                ( lsu_busy           ),
-
-    // signals from CSR
-    .sb_legacy_ex_i        ( sb_legacy_mode     ),
-    .a_addr_i              ( a_address          ),
-    .w_addr_i              ( w_address          )
+    .busy_o                ( lsu_busy           )
   );
 
   assign wb_valid = lsu_ready_wb & apu_ready_wb;
   assign data_unaligned_o = data_misaligned;
-
-
-  //////////////////////////////////////
-  //       __      __     _           //
-  //      |  \    /  |   | |          //
-  //      |   \  /   |   | |          //
-  //      | |\ \/ /| | & | |___       //
-  //      | | \  / | |   |_____|      //
-  //                                  //
-  //            Controller            //
-  //////////////////////////////////////
-
-  macload_controller macl_control_i
-    (
-      .clk_i              ( clk              ),
-      .rstn_i             ( rst_ni           ),
-      .update_a_i         ( lsu_tospra_ex[0] ),
-      .update_w_i         ( lsu_tosprw_ex[0] ),
-      .id_valid_i         ( id_valid         ),
-      .ex_valid_i         ( ex_valid         ),
-      .csr_a_rstn_i       ( macl_a_rstn      ),
-      .csr_w_rstn_i       ( macl_w_rstn      ),
-      .a_address_i        ( a_address        ),
-      .w_address_i        ( w_address        ),
-      .a_stride_i         ( a_stride         ),
-      .w_stride_i         ( w_stride         ),
-      .a_rollback_i       ( a_rollback       ),
-      .w_rollback_i       ( w_rollback       ),
-      .a_skip_i           ( a_skip           ),
-      .w_skip_i           ( w_skip           ),
-      .updated_address_o  ( csr_macl_wdata   ),
-      .csr_op_o           ( csr_macl_op      ),
-      .csr_address_o      ( csr_macl_addr    )
-    );
 
 
   //////////////////////////////////////
@@ -1100,27 +991,6 @@ module riscv_core
     .csr_op_i                ( csr_op             ),
     .csr_rdata_o             ( csr_rdata          ),
 
-    // Additional write interface to a/w address registers
-    .csr_macl_addr_i         ( csr_macl_addr      ), //from macload_controller
-    .csr_macl_wdata_i        ( csr_macl_wdata     ), //from macload_controller
-    .csr_macl_op_i           ( csr_macl_op        ), //from macload controller
-
-    .ivec_fmt_o              ( ivec_fmt_csr       ),  //Added ivec sb : To connect to the id_stage
-    .ivec_mixed_cycle_o      ( current_cycle_csr  ),  //Added for ivec sb : Cycles counter for mixed precion operations
-    .ivec_skip_size_o        ( skip_size_csr      ),  //Added for ivec sb : Used by mpc to know when to increase next_cycle
-    .sb_legacy_o             ( sb_legacy_mode     ),
-
-    .macl_a_address_o        ( a_address          ), //to macload controller and LSU
-    .macl_w_address_o        ( w_address          ), //to macload controller and LSU
-    .macl_a_stride_o         ( a_stride           ), //to macload controller
-    .macl_w_stride_o         ( w_stride           ), //to macload controller
-    .macl_a_rollback_o       ( a_rollback         ), //to macload controller
-    .macl_w_rollback_o       ( w_rollback         ), //to macload controller
-    .macl_a_skip_o           ( a_skip             ), //to macload controller
-    .macl_w_skip_o           ( w_skip             ), //to macload controller
-    .macl_a_rstn_o           ( macl_a_rstn        ), //to macload controller
-    .macl_w_rstn_o           ( macl_w_rstn        ), //to macload controller
-   
     .frm_o                   ( frm_csr            ),
     .fprec_o                 ( fprec_csr          ),
     .fflags_i                ( fflags_csr         ),
@@ -1172,6 +1042,9 @@ module riscv_core
     .hwlp_we_o               ( csr_hwlp_we        ),
     .hwlp_data_o             ( csr_hwlp_data      ),
 
+    .stack_base_o            ( stack_base         ),
+    .stack_limit_o           ( stack_limit        ),
+
     // performance counter related signals
     .id_valid_i              ( id_valid           ),
     .is_compressed_i         ( is_compressed_id   ),
@@ -1197,20 +1070,11 @@ module riscv_core
     .ext_counters_i          ( ext_perf_counters_i                    )
   );
 
-  // Modified for ivec sb : now if a mixed op is being executed we also write into the csr at the same time.
-  always_comb begin
-    csr_access   =  csr_access_ex;
-    csr_addr     =  csr_addr_int;
-    csr_wdata    =  alu_operand_a_ex;
-    csr_op       =  csr_op_ex;
-
-    if(mux_sel_wcsr) begin
-      csr_access   =  1;
-      csr_addr     =  12'h00E;
-      csr_wdata    =  mpc_next_cycle;
-      csr_op       =  2'h1;         
-    end
-  end // always_comb
+  //  CSR access
+  assign csr_access   =  csr_access_ex;
+  assign csr_addr     =  csr_addr_int;
+  assign csr_wdata    =  alu_operand_a_ex;
+  assign csr_op       =  csr_op_ex;
 
   assign csr_addr_int = csr_access_ex ? alu_operand_b_ex[11:0] : '0;
 
@@ -1282,10 +1146,7 @@ module riscv_core
   logic tracer_clk;
   assign #1 tracer_clk = clk_i;
 
-  riscv_tracer 
-  #( .Zfinx         ( Zfinx                                )
-   )
-  riscv_tracer_i
+  riscv_tracer riscv_tracer_i
   (
     .clk            ( tracer_clk                           ), // always-running clock for tracing
     .rst_n          ( rst_ni                               ),
@@ -1329,7 +1190,7 @@ module riscv_core
     .wb_bypass      ( ex_stage_i.branch_in_ex_i            ),
 
     .wb_valid       ( wb_valid                             ),
-    .wb_reg_addr    ( regfile_waddr_fw_wb                  ),
+    .wb_reg_addr    ( regfile_waddr_fw_wb_o                ),
     .wb_reg_we      ( regfile_we_wb                        ),
     .wb_reg_wdata   ( regfile_wdata                        ),
 
@@ -1349,4 +1210,17 @@ module riscv_core
   );
 `endif
 `endif
+
+  `ifdef PRINT_CORE_MEM_ACCESSES
+    always_comb begin
+      if (data_req_o && data_gnt_i) begin
+        if (data_we_o) begin
+          $display("Core %0d,%0d writes 0x%08x.", cluster_id_i, core_id_i, data_addr_o);
+        end else begin
+          $display("Core %0d,%0d reads  0x%08x.", cluster_id_i, core_id_i, data_addr_o);
+        end
+      end
+    end
+  `endif
+
 endmodule

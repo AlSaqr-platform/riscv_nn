@@ -2,7 +2,6 @@ riscv_regfile_rtl:
   targets: [
     rtl,
     tsmc55,
-    tsmc65,
     gf22,
   ]
   incdirs: [
@@ -47,8 +46,6 @@ riscv:
     ./rtl/riscv_fetch_fifo.sv,
     ./rtl/riscv_L0_buffer.sv,
     ./rtl/riscv_pmp.sv,
-    ./rtl/mixed_precision_controller.sv,
-    ./rtl/macload_controller.sv,
   ]
 riscv_vip_rtl:
   targets: [
@@ -68,7 +65,6 @@ riscv_regfile_rtl:
   targets: [
     rtl,
     tsmc55,
-    tsmc65,
     gf22,
   ]
   incdirs: [

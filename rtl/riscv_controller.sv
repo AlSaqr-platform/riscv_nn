@@ -27,9 +27,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import riscv_defines::*;
-
-module riscv_controller
+module riscv_controller import riscv_defines::*;
 #(
   parameter FPU               = 0
 )
@@ -84,8 +82,6 @@ module riscv_controller
   input  logic        data_load_event_i,
   input  logic        data_err_i,
   output logic        data_err_ack_o,
-
-  input logic         computeLoadVLIW_i,         // RNN_EXT
 
   // from ALU
   input  logic        mult_multicycle_i,          // multiplier is taken multiple cycles and uses op c as storage
@@ -144,7 +140,6 @@ module riscv_controller
   // Regfile target
   input  logic        regfile_we_id_i,            // currently decoded we enable
   input  logic [5:0]  regfile_alu_waddr_id_i,     // currently decoded target address
-  input logic [5:0]   regfile_alu_waddr2_id_i,   //RNN_EXT
 
   // Forwarding signals from regfile
   input  logic        regfile_we_ex_i,            // FW: write enable from  EX stage
@@ -207,22 +202,6 @@ module riscv_controller
   logic illegal_insn_q, illegal_insn_n;
 
   logic instr_valid_irq_flush_n, instr_valid_irq_flush_q;
-
-`ifndef SYNTHESIS
-  // synopsys translate_off
-  // make sure we are called later so that we do not generate messages for
-  // glitches
-  always_ff @(negedge clk)
-  begin
-    // print warning in case of decoding errors
-    if (is_decoding_o && illegal_insn_i) begin
-      $display("%t: Illegal instruction (core %0d) at PC 0x%h:", $time, riscv_core.core_id_i,
-               riscv_id_stage.pc_id_i);
-    end
-  end
-  // synopsys translate_on
-`endif
-
 
   ////////////////////////////////////////////////////////////////////////////////////////////
   //   ____ ___  ____  _____    ____ ___  _   _ _____ ____   ___  _     _     _____ ____    //
@@ -294,11 +273,13 @@ module riscv_controller
 
     perf_pipeline_stall_o  = 1'b0;
 
+
     //this signal goes to 1 only registered interrupt requests are killed by exc_kill_o
     //so that the current instructions will have the deassert_we_o signal equal to 0 once the controller is back to DECODE
     instr_valid_irq_flush_n = 1'b0;
 
     hwloop_mask_o           = 1'b0;
+
     unique case (ctrl_fsm_cs)
       // We were just reset, wait for fetch_enable
       RESET:
@@ -437,7 +418,6 @@ module riscv_controller
           // branch in the EX stage is either not taken, or there is no
           // conditional branch in the EX stage
           else if (instr_valid_i || instr_valid_irq_flush_q) //valid block or replay after interrupt speculation
-
           begin // now analyze the current instruction in the ID stage
 
             is_decoding_o = 1'b1;
@@ -649,10 +629,10 @@ module riscv_controller
             exc_kill_o              = 1'b1;
             instr_valid_irq_flush_n = 1'b1;
             ctrl_fsm_ns             = DECODE;
-
           end
         end
       end
+
       IRQ_FLUSH_ELW:
       begin
         is_decoding_o = 1'b0;
@@ -687,7 +667,6 @@ module riscv_controller
         if(id_ready_i)
           ctrl_fsm_ns = (debug_req_i & ~debug_mode_q) ? DBG_FLUSH : IRQ_FLUSH_ELW;
           // if from the ELW EXE we go to IRQ_FLUSH_ELW, it is assumed that if there was an IRQ req together with the grant and IE was valid, then
-
           // there must be no hazard due to xIE
         else
           ctrl_fsm_ns = ELW_EXE;
@@ -1006,8 +985,8 @@ module riscv_controller
           ( (data_req_ex_i == 1'b1) && (regfile_we_ex_i == 1'b1) ||
            (wb_ready_i == 1'b0) && (regfile_we_wb_i == 1'b1)
           ) &&
-          ( ((reg_d_ex_is_reg_a_i == 1'b1) || (reg_d_ex_is_reg_b_i == 1'b1) || (reg_d_ex_is_reg_c_i == 1'b1) ||
-            (is_decoding_o && regfile_we_id_i && (regfile_waddr_ex_i == regfile_alu_waddr_id_i))) && (computeLoadVLIW_i == 1'b0)) // TODO stall control for RNN_EXT 
+          ( (reg_d_ex_is_reg_a_i == 1'b1) || (reg_d_ex_is_reg_b_i == 1'b1) || (reg_d_ex_is_reg_c_i == 1'b1) ||
+            (is_decoding_o && regfile_we_id_i && (regfile_waddr_ex_i == regfile_alu_waddr_id_i)) )
        )
     begin
       deassert_we_o   = 1'b1;
@@ -1089,6 +1068,7 @@ module riscv_controller
       illegal_insn_q <= 1'b0;
 
       instr_valid_irq_flush_q <= 1'b0;
+
     end
     else
     begin

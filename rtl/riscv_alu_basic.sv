@@ -25,31 +25,26 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import riscv_defines::*;
-`include "riscv_config.sv"
-
-module riscv_alu_basic
+module riscv_alu_basic import riscv_defines::*;
 (
-  input logic                    clk,
-  input logic                    rst_n,
+  input  logic                     clk,
+  input  logic                     rst_n,
 
-  input logic [ALU_OP_WIDTH-1:0] operator_i,
-  input logic [31:0]             operand_a_i,
-  input logic [31:0]             operand_b_i,
-  input logic [31:0]             operand_c_i,
+  input  logic [ALU_OP_WIDTH-1:0]  operator_i,
+  input  logic [31:0]              operand_a_i,
+  input  logic [31:0]              operand_b_i,
+  input  logic [31:0]              operand_c_i,
 
+  input  logic [ 1:0]              vector_mode_i,
+  input  logic [ 4:0]              bmask_a_i,
+  input  logic [ 4:0]              bmask_b_i,
+  input  logic [ 1:0]              imm_vec_ext_i,
 
-  input ivec_mode_fmt            vector_mode_i, //Modified for ivec sb : changed from logic to ivec_mode_fmt
+  output logic [31:0]              result_o,
+  output logic                     comparison_result_o,
 
-  input logic [ 4:0]             bmask_a_i,
-  input logic [ 4:0]             bmask_b_i,
-  input logic [ 1:0]             imm_vec_ext_i,
-
-  output logic [31:0]            result_o,
-  output logic                   comparison_result_o,
-
-  output logic                   ready_o,
-  input logic                    ex_ready_i
+  output logic                     ready_o,
+  input  logic                     ex_ready_i
 );
 
 

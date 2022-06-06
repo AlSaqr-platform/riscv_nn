@@ -22,10 +22,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+// pragma translate_off
 `ifndef VERILATOR
-
-import riscv_defines::*;
-import riscv_tracer_defines::*;
 
 // Source/Destination register instruction index
 `define REG_S1 19:15
@@ -34,10 +32,7 @@ import riscv_tracer_defines::*;
 `define REG_S4 31:27
 `define REG_D  11:07
 
-module riscv_tracer 
-#( 
-   parameter Zfinx
-)
+module riscv_tracer import riscv_defines::*; import riscv_tracer_defines::*;
 (
   // Clock and Reset
   input  logic        clk,
@@ -107,7 +102,6 @@ module riscv_tracer
   string       fn;
   integer      cycles;
   logic [ 5:0] rd, rs1, rs2, rs3, rs4;
-  logic        rnn_sr;
 
   typedef struct {
     logic [ 5:0] addr;
@@ -277,18 +271,6 @@ module riscv_tracer
       end
     endfunction // printF2Instr
 
-    function void printF2FInstr(input string mnemonic);
-      begin
-        regs_read.push_back('{rs1, rs1_value});
-        regs_write.push_back('{rd, 'x});
-        if(Zfinx == 1'b0) begin
-           str = $sformatf("%-16s f%0d, f%0d", mnemonic, rd, rs1-32);
-        end else begin
-           str = $sformatf("%-16s x%0d, x%0d", mnemonic, rd, rs1-32);
-        end
-      end
-    endfunction  
-
     function void printF2IInstr(input string mnemonic);
       begin
         regs_read.push_back('{rs1, rs1_value});
@@ -415,6 +397,20 @@ module riscv_tracer
         str =  $sformatf("%-16s x%0d, x%0d, %0d, %0d", mnemonic, rd, rs1, imm_s3_type, imm_s2_type);
       end
     endfunction
+
+    function void printAtomicInstr(input string mnemonic);
+      begin
+        regs_read.push_back('{rs1, rs1_value});
+        regs_read.push_back('{rs2, rs2_value});
+        regs_write.push_back('{rd, 'x});
+        if (instr[31:27] == AMO_LR) begin
+          // Do not print rs2 for load-reserved
+          str = $sformatf("%-16s x%0d, (x%0d)", mnemonic, rd, rs1);
+        end else begin
+          str = $sformatf("%-16s x%0d, x%0d, (x%0d)", mnemonic, rd, rs2, rs1);
+        end
+      end
+    endfunction // printAtomicInstr
 
     function void printLoadInstr();
       string mnemonic;
@@ -596,64 +592,6 @@ module riscv_tracer
       end
     endfunction
 
-    function void printMLInstr();
-      string mnemonic;
-      begin
-        unique case (instr[31:27])
-
-        5'b10111: begin
-          if (instr[12] == 1'b0) begin
-            mnemonic = "pv.mlsdotsp.h";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end else begin
-            mnemonic = "pv.mlsdotsp.b";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end
-        end
-        5'b10101: begin
-          if (instr[12] == 1'b0) begin
-            mnemonic = "pv.mlsdotusp.h";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end else begin
-            mnemonic = "pv.mlsdotusp.b";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end
-        end
-        5'b10100: begin
-          if (instr[12] == 1'b0) begin
-            mnemonic = "pv.mlsdotup.h";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end else begin
-            mnemonic = "pv.mlsdotup.b";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end
-        end
-        5'b10011: begin
-          if (instr[12] == 1'b0) begin
-            mnemonic = "pv.mlsdotsup.h";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end else begin
-            mnemonic = "pv.mlsdotsup.b";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end
-        end
-        default: begin
-          if (instr[12] == 1'b0) begin
-            mnemonic = "pv.mlsdotsup.h";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end else begin
-            mnemonic = "pv.mlsdotsup.b";
-            str = $sformatf("%-16s.%b 0x%0d, x%0d, x%0d", mnemonic, rnn_sr, rd, rs1, rs2);
-          end
-          end
-        endcase
-      end
-    endfunction
-
-
-
-
-
     function void printVecInstr();
       string mnemonic;
       string str_asm;
@@ -824,12 +762,11 @@ module riscv_tracer
     $fclose(f);
   end
 
-  assign rd  = {rd_is_fp && !Zfinx,  instr[`REG_D]};
-  assign rs1 = {rs1_is_fp && !Zfinx, instr[`REG_S1]};
-  assign rs2 = {rs2_is_fp && !Zfinx, instr[`REG_S2]};
-  assign rs3 = {rs3_is_fp && !Zfinx, instr[`REG_S3]};
-  assign rs4 = {rs3_is_fp && !Zfinx, instr[`REG_S4]};
-  assign rnn_sr = {instr[26]};
+  assign rd  = {rd_is_fp,  instr[`REG_D]};
+  assign rs1 = {rs1_is_fp, instr[`REG_S1]};
+  assign rs2 = {rs2_is_fp, instr[`REG_S2]};
+  assign rs3 = {rs3_is_fp, instr[`REG_S3]};
+  assign rs4 = {rs3_is_fp, instr[`REG_S4]};
 
   // virtual ID/EX pipeline
   initial
@@ -888,6 +825,7 @@ module riscv_tracer
       trace.printInstrTrace();
     end
   end
+
 
   // these signals are for simulator visibility. Don't try to do the nicer way
   // of making instr_trace_t visible to inspect it with your simulator. Some
@@ -1057,10 +995,6 @@ module riscv_tracer
         // FP-OP
         INSTR_FMADD:      trace.printF3Instr("fmadd.s");
         INSTR_FMSUB:      trace.printF3Instr("fmsub.s");
-        INSTR_FMADD_AH:   trace.printF3Instr("fmadd.ah");
-        INSTR_FMADD_H:    trace.printF3Instr("fmadd.h");
-        INSTR_FMSUB_AH:   trace.printF3Instr("fmsub.ah");
-        INSTR_FMSUB_H:    trace.printF3Instr("fmsub.h");
         INSTR_FNMADD:     trace.printF3Instr("fnmadd.s");
         INSTR_FNMSUB:     trace.printF3Instr("fnmsub.s");
         INSTR_FADD:       trace.printF2Instr("fadd.s");
@@ -1073,10 +1007,6 @@ module riscv_tracer
         INSTR_FSGNJXS:    trace.printF2Instr("fsgnjx.s");
         INSTR_FMIN:       trace.printF2Instr("fmin.s");
         INSTR_FMAX:       trace.printF2Instr("fmax.s");
-        INSTR_FCVTAHS:    trace.printF2FInstr("fcvt.ah.s");
-        INSTR_FCVTHS:     trace.printF2FInstr("fcvt.h.s");
-        INSTR_FCVTSAH:    trace.printF2FInstr("fcvt.s.ah");
-        INSTR_FCVTSH:     trace.printF2FInstr("fcvt.s.h");
         INSTR_FCVTWS:     trace.printFIInstr("fcvt.w.s");
         INSTR_FCVTWUS:    trace.printFIInstr("fcvt.wu.s");
         INSTR_FMVXS:      trace.printFIInstr("fmv.x.s");
@@ -1088,6 +1018,18 @@ module riscv_tracer
         INSTR_FCVTSWU:    trace.printIFInstr("fcvt.s.wu");
         INSTR_FMVSX:      trace.printIFInstr("fmv.s.x");
 
+        // RV32A
+        INSTR_LR:         trace.printAtomicInstr("lr.w");
+        INSTR_SC:         trace.printAtomicInstr("sc.w");
+        INSTR_AMOSWAP:    trace.printAtomicInstr("amoswap.w");
+        INSTR_AMOADD:     trace.printAtomicInstr("amoadd.w");
+        INSTR_AMOXOR:     trace.printAtomicInstr("amoxor.w");
+        INSTR_AMOAND:     trace.printAtomicInstr("amoand.w");
+        INSTR_AMOOR:      trace.printAtomicInstr("amoor.w");
+        INSTR_AMOMIN:     trace.printAtomicInstr("amomin.w");
+        INSTR_AMOMAX:     trace.printAtomicInstr("amomax.w");
+        INSTR_AMOMINU:    trace.printAtomicInstr("amominu.w");
+        INSTR_AMOMAXU:    trace.printAtomicInstr("amomaxu.w");
 
         // opcodes with custom decoding
         {25'b?, OPCODE_LOAD}:       trace.printLoadInstr();
@@ -1098,7 +1040,6 @@ module riscv_tracer
         {25'b?, OPCODE_STORE_POST}: trace.printStoreInstr();
         {25'b?, OPCODE_HWLOOP}:     trace.printHwloopInstr();
         {25'b?, OPCODE_VECOP}:      trace.printVecInstr();
-        {25'b?, OPCODE_MAC_LOAD}:         trace.printMLInstr();
         default:           trace.printMnemonic("INVALID");
       endcase // unique case (instr)
 
@@ -1106,9 +1047,11 @@ module riscv_tracer
       insn_disas = trace.str;
       insn_pc    = trace.pc;
       insn_val   = trace.instr;
+
       instr_ex.put(trace);
     end
   end // always @ (posedge clk)
 
 endmodule
 `endif
+// pragma translate_on

@@ -26,11 +26,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 `include "apu_macros.sv"
-`include "riscv_config.sv"
 
-import riscv_defines::*;
-
-module riscv_decoder
+module riscv_decoder import riscv_defines::*; import apu_core_package::*;
 #(
   parameter FPU               = 0,
   parameter FP_DIVSQRT        = 0,
@@ -45,129 +42,121 @@ module riscv_decoder
 )
 (
   // singals running to/from controller
-  input logic                         deassert_we_i, // deassert we, we are stalled or not active
-  input logic                         data_misaligned_i, // misaligned data load/store in progress
-  input logic                         mult_multicycle_i, // multiplier taking multiple cycles, using op c as storage
-  output logic                        instr_multicycle_o, // true when multiple cycles are decoded
+  input  logic        deassert_we_i,           // deassert we, we are stalled or not active
+  input  logic        data_misaligned_i,       // misaligned data load/store in progress
+  input  logic        mult_multicycle_i,       // multiplier taking multiple cycles, using op c as storage
+  output logic        instr_multicycle_o,      // true when multiple cycles are decoded
 
-  output logic                        illegal_insn_o, // illegal instruction encountered
-  output logic                        ebrk_insn_o, // trap instruction encountered
+  output logic        illegal_insn_o,          // illegal instruction encountered
+  output logic        ebrk_insn_o,             // trap instruction encountered
 
-  output logic                        mret_insn_o, // return from exception instruction encountered (M)
-  output logic                        uret_insn_o, // return from exception instruction encountered (S)
-  output logic                        dret_insn_o, // return from debug (M)
+  output logic        mret_insn_o,             // return from exception instruction encountered (M)
+  output logic        uret_insn_o,             // return from exception instruction encountered (S)
+  output logic        dret_insn_o,             // return from debug (M)
 
-  output logic                        mret_dec_o, // return from exception instruction encountered (M) without deassert
-  output logic                        uret_dec_o, // return from exception instruction encountered (S) without deassert
-  output logic                        dret_dec_o, // return from debug (M) without deassert
+  output logic        mret_dec_o,              // return from exception instruction encountered (M) without deassert
+  output logic        uret_dec_o,              // return from exception instruction encountered (S) without deassert
+  output logic        dret_dec_o,              // return from debug (M) without deassert
 
-  output logic                        ecall_insn_o, // environment call (syscall) instruction encountered
-  output logic                        pipe_flush_o, // pipeline flush is requested
+  output logic        ecall_insn_o,            // environment call (syscall) instruction encountered
+  output logic        pipe_flush_o,            // pipeline flush is requested
 
-  output logic                        fencei_insn_o, // fence.i instruction
+  output logic        fencei_insn_o,           // fence.i instruction
 
-  output logic                        rega_used_o, // rs1 is used by current instruction
-  output logic                        regb_used_o, // rs2 is used by current instruction
-  output logic                        regc_used_o, // rs3 is used by current instruction
+  output logic        rega_used_o,             // rs1 is used by current instruction
+  output logic        regb_used_o,             // rs2 is used by current instruction
+  output logic        regc_used_o,             // rs3 is used by current instruction
 
-  output logic                        reg_fp_a_o, // fp reg a is used
-  output logic                        reg_fp_b_o, // fp reg b is used
-  output logic                        reg_fp_c_o, // fp reg c is used
-  output logic                        reg_fp_d_o, // fp reg d is used
+  output logic        reg_fp_a_o,              // fp reg a is used
+  output logic        reg_fp_b_o,              // fp reg b is used
+  output logic        reg_fp_c_o,              // fp reg c is used
+  output logic        reg_fp_d_o,              // fp reg d is used
 
-  output logic [ 0:0]                 bmask_a_mux_o, // bit manipulation mask a mux
-  output logic [ 1:0]                 bmask_b_mux_o, // bit manipulation mask b mux
-  output logic                        alu_bmask_a_mux_sel_o, // bit manipulation mask a mux (reg or imm)
-  output logic                        alu_bmask_b_mux_sel_o, // bit manipulation mask b mux (reg or imm)
+  output logic [ 0:0] bmask_a_mux_o,           // bit manipulation mask a mux
+  output logic [ 1:0] bmask_b_mux_o,           // bit manipulation mask b mux
+  output logic        alu_bmask_a_mux_sel_o,   // bit manipulation mask a mux (reg or imm)
+  output logic        alu_bmask_b_mux_sel_o,   // bit manipulation mask b mux (reg or imm)
 
   // from IF/ID pipeline
-  input logic [31:0]                  instr_rdata_i, // instruction read from instr memory/cache
-  input logic                         illegal_c_insn_i, // compressed instruction decode failed
+  input  logic [31:0] instr_rdata_i,           // instruction read from instr memory/cache
+  input  logic        illegal_c_insn_i,        // compressed instruction decode failed
 
   // ALU signals
-  output logic                        alu_en_o, // ALU enable
-  output logic [ALU_OP_WIDTH-1:0]     alu_operator_o, // ALU operation selection
-  output logic [2:0]                  alu_op_a_mux_sel_o, // operand a selection: reg value, PC, immediate or zero
-  output logic [2:0]                  alu_op_b_mux_sel_o, // operand b selection: reg value or immediate
-  output logic [1:0]                  alu_op_c_mux_sel_o, // operand c selection: reg value or jump target
-
-  input                               sb_legacy_i,                  //Added for sb : Legacy MODE
-  input                               ivec_mode_fmt ivec_fmt_i,     //Added for ivec sb : now the correct VEC_MODE it's selected via cs register (for integer operations)
-  output                              ivec_mode_fmt alu_vec_mode_o, // selects between 32 bit, 16 bit and 8 bit vectorial modes -- Modified for ivec sb : changed from logic to ivec_mode_fmt
-  output logic                        ivec_op_o,                    // Added for ivec sb : This is needed inside the alu beacuse in RISCY core VEC_MODE32 was used to discriminate between non vectorial and vectorial mode
-                                                                    // but now vec_mode != 32 will be used even for scalar operation so this signal will restore normal operation 
-
-  output logic                        scalar_replication_o, // scalar replication enable
-  output logic                        scalar_replication_c_o, // scalar replication enable for operand C
-  output logic [0:0]                  imm_a_mux_sel_o, // immediate selection for operand a
-  output logic [3:0]                  imm_b_mux_sel_o, // immediate selection for operand b
-  output logic [1:0]                  regc_mux_o, // register c selection: S3, RD or 0
-  output logic                        is_clpx_o, // whether the instruction is complex (pulpv3) or not
-  output logic                        is_subrot_o,
+  output logic        alu_en_o,                // ALU enable
+  output logic [ALU_OP_WIDTH-1:0] alu_operator_o, // ALU operation selection
+  output logic [2:0]  alu_op_a_mux_sel_o,      // operand a selection: reg value, PC, immediate or zero
+  output logic [2:0]  alu_op_b_mux_sel_o,      // operand b selection: reg value or immediate
+  output logic [1:0]  alu_op_c_mux_sel_o,      // operand c selection: reg value or jump target
+  output logic [1:0]  alu_vec_mode_o,          // selects between 32 bit, 16 bit and 8 bit vectorial modes
+  output logic        scalar_replication_o,    // scalar replication enable
+  output logic        scalar_replication_c_o,  // scalar replication enable for operand C
+  output logic [0:0]  imm_a_mux_sel_o,         // immediate selection for operand a
+  output logic [3:0]  imm_b_mux_sel_o,         // immediate selection for operand b
+  output logic [1:0]  regc_mux_o,              // register c selection: S3, RD or 0
+  output logic        is_clpx_o,               // whether the instruction is complex (pulpv3) or not
+  output logic        is_subrot_o,
 
   // MUL related control signals
-  output                              mult_op_type mult_operator_o, // Multiplication operation selection //Modified ivec sb : changed from logic to mult_op_type
-
-  output logic                        mult_int_en_o, // perform integer multiplication
-  output logic                        mult_dot_en_o, // perform dot multiplication
-  output logic [0:0]                  mult_imm_mux_o, // Multiplication immediate mux selector
-  output logic                        mult_sel_subword_o, // Select subwords for 16x16 bit of multiplier
-  output logic [1:0]                  mult_signed_mode_o, // Multiplication in signed mode
-  output logic [1:0]                  mult_dot_signed_o, // Dot product in signed mode
-  output logic                        dot_spr_operand_o, // dot product with operand in SPR
+  output logic [2:0]  mult_operator_o,         // Multiplication operation selection
+  output logic        mult_int_en_o,           // perform integer multiplication
+  output logic        mult_dot_en_o,           // perform dot multiplication
+  output logic [0:0]  mult_imm_mux_o,          // Multiplication immediate mux selector
+  output logic        mult_sel_subword_o,      // Select subwords for 16x16 bit of multiplier
+  output logic [1:0]  mult_signed_mode_o,      // Multiplication in signed mode
+  output logic [1:0]  mult_dot_signed_o,       // Dot product in signed mode
 
   // FPU
-  input logic [C_RM-1:0]              frm_i, // Rounding mode from float CSR
+  input  logic [C_RM-1:0]             frm_i,   // Rounding mode from float CSR
 
-  output logic [C_FPNEW_FMTBITS-1:0]  fpu_dst_fmt_o, // fpu destination format
-  output logic [C_FPNEW_FMTBITS-1:0]  fpu_src_fmt_o, // fpu source format
-  output logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_o, // fpu integer format (for casts)
+  output logic [C_FPNEW_FMTBITS-1:0]  fpu_dst_fmt_o,   // fpu destination format
+  output logic [C_FPNEW_FMTBITS-1:0]  fpu_src_fmt_o,   // fpu source format
+  output logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt_o,   // fpu integer format (for casts)
 
   // APU
-  output logic                        apu_en_o,
-  output logic [WAPUTYPE-1:0]         apu_type_o,
-  output logic [APU_WOP_CPU-1:0]      apu_op_o,
-  output logic [1:0]                  apu_lat_o,
-  output logic [WAPUTYPE-1:0]         apu_flags_src_o,
-  output logic [2:0]                  fp_rnd_mode_o,
+  output logic                apu_en_o,
+  output logic [WAPUTYPE-1:0] apu_type_o,
+  output logic [APU_WOP_CPU-1:0]  apu_op_o,
+  output logic [1:0]          apu_lat_o,
+  output logic [WAPUTYPE-1:0] apu_flags_src_o,
+  output logic [2:0]          fp_rnd_mode_o,
 
   // register file related signals
-  output logic                        regfile_mem_we_o, // write enable for regfile
-  output logic                        regfile_alu_we_o, // write enable for 2nd regfile port
-  output logic                        regfile_alu_we_dec_o, // write enable for 2nd regfile port without deassert
-  output logic                        regfile_alu_waddr_sel_o, // Select register write address for ALU/MUL operations
+  output logic        regfile_mem_we_o,        // write enable for regfile
+  output logic        regfile_alu_we_o,        // write enable for 2nd regfile port
+  output logic        regfile_alu_we_dec_o,    // write enable for 2nd regfile port without deassert
+  output logic        regfile_alu_waddr_sel_o, // Select register write address for ALU/MUL operations
 
   // CSR manipulation
+  output logic        csr_access_o,            // access to CSR
+  output logic        csr_status_o,            // access to xstatus CSR
+  output logic [1:0]  csr_op_o,                // operation to perform on CSR
+  input  PrivLvl_t    current_priv_lvl_i,      // The current privilege level
 
-  output logic [3:0]                  write_sb_csr_o, //aggiunta sb fpu: bit 0 -> Scrivo il dst_fmt, bit 1 -> Scrivo il src_fmt, bit 2 -> Scrivo int_fmt
-                                                      //Added ivec sb : Also added a fourth bit to discriminate if VEC_MODE cs is being written
-
-  output logic                        csr_access_o, // access to CSR
-  output logic                        csr_status_o, // access to xstatus CSR
-  output logic [1:0]                  csr_op_o, // operation to perform on CSR
-  input                               PrivLvl_t current_priv_lvl_i, // The current privilege level
+  // Stack protection
+  output logic        stack_access_o,          // memory access through the stack pointer
 
   // LD/ST unit signals
-  output logic                        data_req_o, // start transaction to data memory
-  output logic                        data_we_o, // data memory write enable
-  output logic                        prepost_useincr_o, // when not active bypass the alu result for address calculation
-  output logic [1:0]                  data_type_o, // data type on data memory: byte, half word or word
-  output logic [1:0]                  data_sign_extension_o, // sign extension on read data from data memory / NaN boxing
-  output logic [1:0]                  data_reg_offset_o, // offset in byte inside register for stores
-  output logic                        data_load_event_o, // data request is in the special event range
-  output logic [2:0]                  lsu_tosprw_o, // ls to weight spr (RNN extension) RNN_EXT
-  output logic [1:0]                  lsu_tospra_o, // ls to activation spr (RNN extension) RNN_EXT
+  output logic        data_req_o,              // start transaction to data memory
+  output logic        data_we_o,               // data memory write enable
+  output logic        prepost_useincr_o,       // when not active bypass the alu result for address calculation
+  output logic [1:0]  data_type_o,             // data type on data memory: byte, half word or word
+  output logic [1:0]  data_sign_extension_o,   // sign extension on read data from data memory / NaN boxing
+  output logic [1:0]  data_reg_offset_o,       // offset in byte inside register for stores
+  output logic        data_load_event_o,       // data request is in the special event range
+
+  // Atomic memory access
+  output  logic [5:0] atop_o,
 
   // hwloop signals
-  output logic [2:0]                  hwloop_we_o, // write enable for hwloop regs
-  output logic                        hwloop_target_mux_sel_o, // selects immediate for hwloop target
-  output logic                        hwloop_start_mux_sel_o, // selects hwloop start address input
-  output logic                        hwloop_cnt_mux_sel_o, // selects hwloop counter input
+  output logic [2:0]  hwloop_we_o,             // write enable for hwloop regs
+  output logic        hwloop_target_mux_sel_o, // selects immediate for hwloop target
+  output logic        hwloop_start_mux_sel_o,  // selects hwloop start address input
+  output logic        hwloop_cnt_mux_sel_o,    // selects hwloop counter input
 
   // jump/branches
-  output logic [1:0]                  jump_in_dec_o, // jump_in_id without deassert
-  output logic [1:0]                  jump_in_id_o, // jump is being calculated in ALU
-  output logic [1:0]                  jump_target_mux_sel_o    // jump target selection
+  output logic [1:0]  jump_in_dec_o,           // jump_in_id without deassert
+  output logic [1:0]  jump_in_id_o,            // jump is being calculated in ALU
+  output logic [1:0]  jump_target_mux_sel_o    // jump target selection
 );
 
   // careful when modifying the following parameters! these types have to match the ones in the APU!
@@ -199,6 +188,7 @@ module riscv_decoder
 
   logic [1:0] csr_op;
 
+  logic       alu_en;
   logic       mult_int_en;
   logic       mult_dot_en;
   logic       apu_en;
@@ -211,12 +201,7 @@ module riscv_decoder
   logic                      fpu_vec_op; // fpu vectorial operation
   // unittypes for latencies to help us decode for APU
   enum logic[1:0] {ADDMUL, DIVSQRT, NONCOMP, CONV} fp_op_group;
-  logic myfancyinstrucion; // RNN_EXT (DEBUG)
 
-  //Aggiunta sb fpu: Estraggo i bit dell'indirizzo nel caso di una scrittura csr
-  logic [11:0] csr_sb_fpu_addr;
-
-   
 
   /////////////////////////////////////////////
   //   ____                     _            //
@@ -229,25 +214,15 @@ module riscv_decoder
 
   always_comb
   begin
-    myfancyinstrucion = 1'b0; // RNN_EXT (DEBUG)
     jump_in_id                  = BRANCH_NONE;
     jump_target_mux_sel_o       = JT_JAL;
 
-    alu_en_o                    = 1'b1;
+    alu_en                      = 1'b1;
     alu_operator_o              = ALU_SLTU;
     alu_op_a_mux_sel_o          = OP_A_REGA_OR_FWD;
     alu_op_b_mux_sel_o          = OP_B_REGB_OR_FWD;
     alu_op_c_mux_sel_o          = OP_C_REGC_OR_FWD;
-
-    if (!sb_legacy_i) begin     // Added for sb : LEGACY MODE
-      //Modified for ivec sb and status-based MACLOADL: Now the default value will be select via cs reg
-      alu_vec_mode_o            = ((instr_rdata_i[6:0] == OPCODE_VECOP) || (instr_rdata_i[6:0] == OPCODE_MAC_LOAD)) ? ivec_fmt_i : VEC_MODE32;
-    end
-    else begin
-      alu_vec_mode_o            = VEC_MODE32;      
-    end
-    ivec_op_o                   = 1'b0;       //Added for ivec sb : Initialization of ivec_op
-
+    alu_vec_mode_o              = VEC_MODE32;
     scalar_replication_o        = 1'b0;
     scalar_replication_c_o      = 1'b0;
     regc_mux_o                  = REGC_ZERO;
@@ -261,7 +236,6 @@ module riscv_decoder
     mult_signed_mode_o          = 2'b00;
     mult_sel_subword_o          = 1'b0;
     mult_dot_signed_o           = 2'b00;
-    dot_spr_operand_o           = 1'b0;
 
     apu_en                      = 1'b0;
     apu_type_o                  = '0;
@@ -272,11 +246,9 @@ module riscv_decoder
     fpu_op                      = fpnew_pkg::SGNJ;
     fpu_op_mod                  = 1'b0;
     fpu_vec_op                  = 1'b0;
-
-    fpu_dst_fmt_o               = fpnew_pkg::FP32; 
-    fpu_src_fmt_o               = fpnew_pkg::FP32; 
-    fpu_int_fmt_o               = fpnew_pkg::INT32; 
-
+    fpu_dst_fmt_o               = fpnew_pkg::FP32;
+    fpu_src_fmt_o               = fpnew_pkg::FP32;
+    fpu_int_fmt_o               = fpnew_pkg::INT32;
     check_fprm                  = 1'b0;
     fp_op_group                 = ADDMUL;
 
@@ -298,6 +270,8 @@ module riscv_decoder
     mret_insn_o                 = 1'b0;
     uret_insn_o                 = 1'b0;
 
+    stack_access_o              = 1'b0;
+
     dret_insn_o                 = 1'b0;
 
     data_we_o                   = 1'b0;
@@ -306,8 +280,8 @@ module riscv_decoder
     data_reg_offset_o           = 2'b00;
     data_req                    = 1'b0;
     data_load_event_o           = 1'b0;
-    lsu_tosprw_o                = 3'b0; // RNN_EXT
-    lsu_tospra_o                = 2'b0; // RNN_EXT
+
+    atop_o                      = 6'b000000;
 
     illegal_insn_o              = 1'b0;
     ebrk_insn_o                 = 1'b0;
@@ -336,9 +310,6 @@ module riscv_decoder
     mret_dec_o                  = 1'b0;
     uret_dec_o                  = 1'b0;
     dret_dec_o                  = 1'b0;
-
-    csr_sb_fpu_addr             = instr_rdata_i[31:20]; //aggiunta sb fpu
-    write_sb_csr_o              = '0; //Added for sb fpu : default value for write_sb_csr
 
     unique case (instr_rdata_i[6:0])
 
@@ -461,6 +432,8 @@ module riscv_decoder
             illegal_insn_o = 1'b1;
           end
         endcase
+
+        stack_access_o = (instr_rdata_i[19:15] == 5'd2);
       end
 
       OPCODE_LOAD,
@@ -523,156 +496,53 @@ module riscv_decoder
           // LD -> RV64 only
           illegal_insn_o = 1'b1;
         end
+
+        stack_access_o = (instr_rdata_i[19:15] == 5'd2);
       end
 
-      //////////////////////////////////////////////////////////////////////
-      //  ____  _   _ _   _   _____      _                 _              //
-      // |  _ \| \ | | \ | | | ____|_  _| |_ ___ _ __  ___(_) ___  _ __   //
-      // | |_) |  \| |  \| | |  _| \ \/ / __/ _ \ '_ \/ __| |/ _ \| '_ \  //
-      // |  _ <| |\  | |\  | | |___ >  <| ||  __/ | | \__ \ | (_) | | | | //
-      // |_| \_\_| \_|_| \_| |_____/_/\_\\__\___|_| |_|___/_|\___/|_| |_| //
-      //////////////////////////////////////////////////////////////////////
+      OPCODE_AMO: begin
+        if (instr_rdata_i[14:12] == 3'b010) begin // RV32A Extension (word)
+          data_req          = 1'b1;
+          // alu_en            = 1'b0;
+          data_type_o       = 2'b00;
+          rega_used_o       = 1'b1;
+          regb_used_o       = 1'b1;
+          // regc_used_o       = 1'b1;
+          // regc_mux_o        = REGC_RD;    // Set register c address to rd part of instruction
+          regfile_mem_we    = 1'b1;
+          prepost_useincr_o = 1'b0;       // Set to zero to only use alu_operand_a as address (not a+b)
+          alu_op_a_mux_sel_o = OP_A_REGA_OR_FWD;
 
-      
+          data_sign_extension_o = 1'b1;
 
-// `ifdef RNN_EXTENSION
-      OPCODE_MAC_LOAD: begin // RNN Extension RNN_EXT
+          // Forward AMO instruction code to per2axi
+          atop_o = {1'b1, instr_rdata_i[31:27]};
 
-        // alu_op_b_mux_sel_o = OP_B_IMM; --> to be included in v3
-        //       imm_b_mux_sel_o    = IMMB_MACL; --> to be included in v3
-
-        myfancyinstrucion       = 1'b1; // just for debugging :)
-        
-        rega_used_o             = 1'b1;
-        regb_used_o             = 1'b1;
-
-        regc_used_o             = 1'b1;
-        regc_mux_o              = REGC_RD;
-
-        dot_spr_operand_o       = 1'b1; // 1 if using dotp unit with SPR operand
-
-        // check if load part is issued
-        // i24 and i23 cannot be both high --> illegal insn control
-        // if i24 is high --> update weight
-        // if i23 is high --> update activation
-        // if both are low --> only MAC insn
-        if (instr_rdata_i[24] & instr_rdata_i[23])
-          illegal_insn_o          = 1'b1;
-        else if (instr_rdata_i[24] ) begin
-          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b1};
-          lsu_tospra_o          = { instr_rdata_i[20], 1'b0};
-          if(sb_legacy_i) begin
-            alu_en_o              = 1'b1; // ALU for lwincrement part
-            regfile_alu_we        = 1'b1;
-          end else begin
-            alu_en_o              = 1'b0; // update of the address is made by the M&L controller
-            regfile_alu_we        = 1'b1; // address is written into the CSR
-          end
-          data_req                = 1'b1;    // date req enabled for load part
-          data_type_o             = 2'b00;   // probably WORD
-        end else if (instr_rdata_i[23]) begin
-          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b0};
-          lsu_tospra_o          = { instr_rdata_i[20], 1'b1};
-          if(sb_legacy_i) begin
-            alu_en_o              = 1'b1; // ALU for lwincrement part
-            regfile_alu_we        = 1'b1;
-          end else begin
-            alu_en_o              = 1'b0; // update of the address is made by the M&L controller
-            regfile_alu_we        = 1'b1; // address is written into the CSR
-          end
-          data_req                = 1'b1;    // date req enabled for load part
-          data_type_o             = 2'b00;   // probably WORD
-        end else begin
-          lsu_tosprw_o          = { instr_rdata_i[22:21], 1'b0};
-          lsu_tospra_o          = { instr_rdata_i[20], 1'b0}; 
-          alu_en_o                = 1'b0; // ALU for lwincrement part
-          regfile_alu_we          = 1'b0;
-          data_req                = 1'b0;    // date req enabled for load part
-          data_type_o             = 2'b00;   // probably WORD
-        end
-
-        // if (instr_rdata_i[26]) begin
-        // lsu_tospr_o             = {1'b0, instr_rdata_i[25], 1'b1};  // 01 SPR[0] // 11 SPR[1]
-        // alu_en_o                = 1'b1; // ALU for lwincrement part
-        // regfile_alu_we          = 1'b1;
-        // data_req                = 1'b1;    // date req enabled for load part
-        // data_type_o             = 2'b00;   // probably WORD
-        // end else begin
-        // lsu_tospr_o             = {1'b0, instr_rdata_i[25], 1'b0};  // 01 SPR[0] // 11 SPR[1]
-        // alu_en_o                = 1'b0; // ALU for lwincrement part
-        // regfile_alu_we          = 1'b0;
-        // data_req                = 1'b0;    // date req enabled for load part
-        // data_type_o             = 2'b00;   // probably WORD
-        // end
-
-
-        alu_operator_o          = ALU_ADD4; // increment size for load part (WORD)
-        prepost_useincr_o       = 1'b0; // enable post-access load
-        regfile_alu_waddr_sel_o = 1'b0; // alu waddr
-        regfile_mem_we          = 1'b1;
-
-        //data_sign_extension_o = {1'b0,~instr_rdata_i[14]}; // is this necessary?
-
-        alu_op_b_mux_sel_o      = OP_B_REGB_OR_FWD; // --> no more valid for v3. Operand b for the MAC fetched from SPRs
-        
-        case (instr_rdata_i[31:25])
-        7'b1111100: begin //M&L SDOTP S-S
-          mult_dot_en             = 1'b1;   // enable dotp unit
-          mult_dot_signed_o       = 2'b11; // set for signed-signed interpretation of operands
-          end
-        7'b1110100: begin //M&L SDOTP U-S
-          mult_dot_en             = 1'b1;   // enable dotp unit
-          mult_dot_signed_o       = 2'b10;  // set for unsigned-signed interpretation of operands
-          end
-        7'b1110000: begin //M&L SDOTP U-U
-          mult_dot_en             = 1'b1;   // enable dotp unit
-          mult_dot_signed_o       = 2'b00;  // set for unsigned-unsigned interpretation of operands
-          end
-        7'b1101100: begin //M&L SDOTP S-U
-          mult_dot_en             = 1'b1;   // enable dotp unit
-          mult_dot_signed_o       = 2'b01;  // set for signed-unsigned interpretation of operands
-        end
-        default : begin
-          illegal_insn_o          = 1'b1;
-          end
-        endcase
-
-
-        if(sb_legacy_i) begin
-          case (instr_rdata_i[14:12])
-          3'b000: begin // 16-b precision
-            mult_operator_o         = MUL_DOT16; // set for 16-bit SIMD sum-dot-product
+          unique case (instr_rdata_i[31:27])
+            AMO_LR: begin
+              data_we_o = 1'b0;
             end
-          3'b001: begin // 8-bit precision
-            mult_operator_o         = MUL_DOT8; // set for 8-bit SIMD sum-dot-product
+            AMO_SC,
+            AMO_SWAP,
+            AMO_ADD,
+            AMO_XOR,
+            AMO_AND,
+            AMO_OR,
+            AMO_MIN,
+            AMO_MAX,
+            AMO_MINU,
+            AMO_MAXU: begin
+              data_we_o = 1'b1;
+              alu_op_c_mux_sel_o = OP_C_REGB_OR_FWD;  // pass write data through ALU operand c
             end
-          3'b010: begin
-            mult_operator_o         = MUL_DOT4;
-            end
-          3'b011: begin
-            mult_operator_o         = MUL_DOT2;
-          end
-          default: begin //default condition
-            illegal_insn_o          = 1'b1;
-            end
-          endcase
-        end else begin
-          case (ivec_fmt_i)
-            MIXED_2x4 : mult_operator_o = MIXED_MUL_2x4;
-            MIXED_2x8 : mult_operator_o = MIXED_MUL_2x8;
-            MIXED_2x16: mult_operator_o = MIXED_MUL_2x16;
-            MIXED_4x8 : mult_operator_o = MIXED_MUL_4x8;
-            MIXED_4x16: mult_operator_o = MIXED_MUL_4x16;
-            MIXED_8x16: mult_operator_o = MIXED_MUL_8x16;
-            VEC_MODE16: mult_operator_o = MUL_DOT16;
-            VEC_MODE8 : mult_operator_o = MUL_DOT8;
-            VEC_MODE4 : mult_operator_o = MUL_DOT4;
-            VEC_MODE2 : mult_operator_o = MUL_DOT2;
-            default   : illegal_insn_o  = 1'b1;
+            default : illegal_insn_o = 1'b1;
           endcase
         end
+        else begin
+          illegal_insn_o = 1'b1;
+        end
+      end
 
-      end  
 
       //////////////////////////
       //     _    _    _   _  //
@@ -858,7 +728,7 @@ module riscv_decoder
 
               // using APU instead of ALU
               apu_en           = 1'b1;
-              alu_en_o         = 1'b0;
+              alu_en           = 1'b0;
               apu_flags_src_o  = APU_FLAGS_FPNEW;
               // by default, set all registers to FP registers and use 2
               rega_used_o      = 1'b1;
@@ -873,7 +743,7 @@ module riscv_decoder
               check_fprm       = 1'b1;
               fp_rnd_mode_o    = frm_i; // all vectorial ops have rm from fcsr
 
-               // Decode Formats
+              // Decode Formats
               unique case (instr_rdata_i[13:12])
                 // FP32
                 2'b00: begin
@@ -899,7 +769,6 @@ module riscv_decoder
 
               // By default, src=dst
               fpu_src_fmt_o = fpu_dst_fmt_o;
-
 
               // decode vectorial FP instruction
               unique case (instr_rdata_i[29:25]) inside
@@ -1032,7 +901,15 @@ module riscv_decoder
                       fpu_op_mod  = instr_rdata_i[14]; // signed/unsigned switch
                       apu_type_o  = APUTYPE_CAST;
                       // Integer width matches FP width
-
+                      unique case (instr_rdata_i[13:12])
+                        // FP32
+                        2'b00 : fpu_int_fmt_o = fpnew_pkg::INT32;
+                        // FP16[ALT]
+                        2'b01,
+                        2'b10: fpu_int_fmt_o = fpnew_pkg::INT16;
+                        // FP8
+                        2'b11: fpu_int_fmt_o = fpnew_pkg::INT8;
+                      endcase
                       // Int to FP conversion
                       if (instr_rdata_i[20]) begin
                         reg_fp_a_o = 1'b0; // go from integer regfile
@@ -1050,26 +927,6 @@ module riscv_decoder
                       fp_op_group = CONV;
                       apu_type_o  = APUTYPE_CAST;
                       // check source format
-
-                       unique case(instr_rdata_i[21:20])
-                         2'b00: begin
-                            if (~C_RVF)
-                              illegal_insn_o = 1'b1;
-                         end
-                         2'b01: begin
-                            if (~C_XF16ALT)
-                              illegal_insn_o = 1'b1;                         
-                         end
-                         2'b10: begin
-                            if (~C_XF16)
-                              illegal_insn_o = 1'b1;                           
-                         end
-                         2'b11: begin
-                            if (~C_XF8)
-                              illegal_insn_o = 1'b1;
-                         end
-                       endcase
-
                       unique case (instr_rdata_i[21:20])
                         // Only process instruction if corresponding extension is active (static)
                         2'b00: begin
@@ -1089,7 +946,6 @@ module riscv_decoder
                           if (~C_XF8) illegal_insn_o = 1'b1;
                         end
                       endcase
-
                       // R must not be set
                       if (instr_rdata_i[14]) illegal_insn_o = 1'b1;
                     end
@@ -1191,10 +1047,12 @@ module riscv_decoder
 
                   // vfcpk{a-d}.vfmt.d - from double
                   if (instr_rdata_i[26]) begin
+                    fpu_src_fmt_o  = fpnew_pkg::FP64;
                     if (~C_RVD) illegal_insn_o = 1'b1;
                   end
                   // vfcpk{a-d}.vfmt.s
                   else begin
+                    fpu_src_fmt_o  = fpnew_pkg::FP32;
                     if (~C_RVF) illegal_insn_o = 1'b1;
                   end
                   // Resolve legal vfcpk / format combinations (mostly static)
@@ -1244,19 +1102,19 @@ module riscv_decoder
                 // ADDMUL has format dependent latency
                 ADDMUL : begin
                   unique case (fpu_dst_fmt_o)
-                    fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
-                    fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
-                    fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
-                    fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
+                    fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
+                    fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
+                    fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
+                    fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
                     default : ;
                   endcase
                 end
                 // DIVSQRT is iterative and takes more than 2 cycles
-                DIVSQRT : apu_lat_o = 2'h0;
+                DIVSQRT : apu_lat_o = 2'h3;
                 // NONCOMP uses the same latency for all formats
-                NONCOMP : apu_lat_o = (C_LAT_NONCOMP<3) ? C_LAT_NONCOMP+1 : 2'h0;
+                NONCOMP : apu_lat_o = (C_LAT_NONCOMP<2) ? C_LAT_FP32+1 : 2'h3;
                 // CONV uses the same latency for all formats
-                CONV    : apu_lat_o = (C_LAT_CONV<3) ? C_LAT_CONV+1 : 2'h0;
+                CONV    : apu_lat_o = (C_LAT_CONV<2) ? C_LAT_FP32+1 : 2'h3;
               endcase
 
               // Set FPnew OP and OPMOD as the APU op
@@ -1293,13 +1151,13 @@ module riscv_decoder
 
             // supported RV32M instructions
             {6'b00_0001, 3'b000}: begin // mul
-              alu_en_o        = 1'b0;
+              alu_en          = 1'b0;
               mult_int_en     = 1'b1;
               mult_operator_o = MUL_MAC32;
               regc_mux_o      = REGC_ZERO;
             end
             {6'b00_0001, 3'b001}: begin // mulh
-              alu_en_o           = 1'b0;
+              alu_en             = 1'b0;
               regc_used_o        = 1'b1;
               regc_mux_o         = REGC_ZERO;
               mult_signed_mode_o = 2'b11;
@@ -1308,7 +1166,7 @@ module riscv_decoder
               instr_multicycle_o = 1'b1;
             end
             {6'b00_0001, 3'b010}: begin // mulhsu
-              alu_en_o           = 1'b0;
+              alu_en             = 1'b0;
               regc_used_o        = 1'b1;
               regc_mux_o         = REGC_ZERO;
               mult_signed_mode_o = 2'b01;
@@ -1317,7 +1175,7 @@ module riscv_decoder
               instr_multicycle_o = 1'b1;
             end
             {6'b00_0001, 3'b011}: begin // mulhu
-              alu_en_o           = 1'b0;
+              alu_en             = 1'b0;
               regc_used_o        = 1'b1;
               regc_mux_o         = REGC_ZERO;
               mult_signed_mode_o = 2'b00;
@@ -1372,7 +1230,7 @@ module riscv_decoder
 
             // PULP specific instructions
             {6'b10_0001, 3'b000}: begin // p.mac
-              alu_en_o        = 1'b0;
+              alu_en          = 1'b0;
               regc_used_o     = 1'b1;
               regc_mux_o      = REGC_RD;
               mult_int_en     = 1'b1;
@@ -1380,7 +1238,7 @@ module riscv_decoder
               `USE_APU_INT_MULT
             end
             {6'b10_0001, 3'b001}: begin // p.msu
-              alu_en_o        = 1'b0;
+              alu_en          = 1'b0;
               regc_used_o     = 1'b1;
               regc_mux_o      = REGC_RD;
               mult_int_en     = 1'b1;
@@ -1452,7 +1310,7 @@ module riscv_decoder
 
           // using APU instead of ALU
           apu_en           = 1'b1;
-          alu_en_o         = 1'b0;
+          alu_en           = 1'b0;
           // Private and new shared FP use FPnew
           apu_flags_src_o  = (SHARED_FP==1) ? APU_FLAGS_FP : APU_FLAGS_FPNEW;
           // by default, set all registers to FP registers and use 2
@@ -1484,7 +1342,7 @@ module riscv_decoder
 
           // By default, src=dst
           fpu_src_fmt_o = fpu_dst_fmt_o;
-           
+
           // decode FP instruction
           unique case (instr_rdata_i[31:27])
             // fadd.fmt - FP Addition
@@ -1549,7 +1407,7 @@ module riscv_decoder
               // old FPU needs ALU
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 case (instr_rdata_i[14:12])
                   //fsgnj.s
@@ -1572,23 +1430,23 @@ module riscv_decoder
                     illegal_insn_o = 1'b1;
                   end
                   // FP16ALT uses special encoding here
-		              if (instr_rdata_i[14]) begin
+                  if (instr_rdata_i[14]) begin
                     fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                    fpu_src_fmt_o = fpnew_pkg::FP16ALT; 
-		              end else begin
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                  end else begin
                     fp_rnd_mode_o = {1'b0, instr_rdata_i[13:12]};
-                  end                  
+                  end
                 end else begin
                   if (!(instr_rdata_i[14:12] inside {[3'b000:3'b010]})) illegal_insn_o = 1'b1;
                 end
-              end // else: !if(SHARED_FP==1)
-            end // case: 5'b00100            
+              end
+            end
             // fmin/fmax.fmt - FP Minimum / Maximum
             5'b00101: begin
               // old FPU needs ALU
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 case (instr_rdata_i[14:12])
                   //fmin.s
@@ -1607,25 +1465,24 @@ module riscv_decoder
                   if (!(instr_rdata_i[14:12] inside {[3'b000:3'b001], [3'b100:3'b101]})) begin
                     illegal_insn_o = 1'b1;
                   end
-
-		              // FP16ALT uses special encoding here
+                  // FP16ALT uses special encoding here
                   if (instr_rdata_i[14]) begin
                     fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;                  
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
                   end else begin
-                   fp_rnd_mode_o = {1'b0, instr_rdata_i[13:12]};
+                    fp_rnd_mode_o = {1'b0, instr_rdata_i[13:12]};
                   end
                 end else begin
-                   if (!(instr_rdata_i[14:12] inside {[3'b000:3'b001]})) illegal_insn_o = 1'b1;
+                  if (!(instr_rdata_i[14:12] inside {[3'b000:3'b001]})) illegal_insn_o = 1'b1;
                 end
-              end 
+              end
             end
             // fcvt.fmt.fmt - FP to FP Conversion
             5'b01000: begin
               // old FPU has hacky fcvt.s.d
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 regb_used_o    = 1'b0;
                 alu_operator_o = ALU_FKEEP;
@@ -1637,31 +1494,30 @@ module riscv_decoder
                 apu_type_o    = APUTYPE_CAST;
                 // bits [22:20] used, other bits must be 0
                 if (instr_rdata_i[24:23]) illegal_insn_o = 1'b1;
-                
-                //check source format
+                // check source format
                 unique case (instr_rdata_i[22:20])
-                // Only process instruction if corresponding extension is active (static)
-                3'b000: begin
-                  if (~C_RVF) illegal_insn_o = 1'b1;
-                  fpu_src_fmt_o = fpnew_pkg::FP32;
-                end
-                3'b001: begin
-                  if (~C_RVD) illegal_insn_o = 1'b1;
-                  fpu_src_fmt_o = fpnew_pkg::FP64;
-                end
-                3'b010: begin
-                  if (~C_XF16) illegal_insn_o = 1'b1;
-                  fpu_src_fmt_o = fpnew_pkg::FP16;
-                end
-                3'b110: begin
-                  if (~C_XF16ALT) illegal_insn_o = 1'b1;
-                  fpu_src_fmt_o = fpnew_pkg::FP16ALT;
-                end
-                3'b011: begin
-                  if (~C_XF8) illegal_insn_o = 1'b1;
-                  fpu_src_fmt_o = fpnew_pkg::FP8;
-                end
-                default: illegal_insn_o = 1'b1;
+                  // Only process instruction if corresponding extension is active (static)
+                  3'b000: begin
+                    if (~C_RVF) illegal_insn_o = 1'b1;
+                    fpu_src_fmt_o = fpnew_pkg::FP32;
+                  end
+                  3'b001: begin
+                    if (~C_RVD) illegal_insn_o = 1'b1;
+                    fpu_src_fmt_o = fpnew_pkg::FP64;
+                  end
+                  3'b010: begin
+                    if (~C_XF16) illegal_insn_o = 1'b1;
+                    fpu_src_fmt_o = fpnew_pkg::FP16;
+                  end
+                  3'b110: begin
+                    if (~C_XF16ALT) illegal_insn_o = 1'b1;
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                  end
+                  3'b011: begin
+                    if (~C_XF8) illegal_insn_o = 1'b1;
+                    fpu_src_fmt_o = fpnew_pkg::FP8;
+                  end
+                  default: illegal_insn_o = 1'b1;
                 endcase
               end
             end
@@ -1691,7 +1547,7 @@ module riscv_decoder
               // old FPU needs ALU
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 reg_fp_d_o     = 1'b0;
                 case (instr_rdata_i[14:12])
@@ -1715,18 +1571,18 @@ module riscv_decoder
                     illegal_insn_o = 1'b1;
                   end
                   // FP16ALT uses special encoding here
-		              if (instr_rdata_i[14]) begin
-                   fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                   fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                  if (instr_rdata_i[14]) begin
+                    fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
                   end else begin
-                   fp_rnd_mode_o = {1'b0, instr_rdata_i[13:12]};
+                    fp_rnd_mode_o = {1'b0, instr_rdata_i[13:12]};
                   end
                 end else begin
                   if (!(instr_rdata_i[14:12] inside {[3'b000:3'b010]})) illegal_insn_o = 1'b1;
                 end
               end
             end
-            // fcvt.int_fmt.fmt - FP to Int Conversion
+            // fcvt.ifmt.fmt - FP to Int Conversion
             5'b11000: begin
               regb_used_o   = 1'b0;
               reg_fp_d_o    = 1'b0; // go to integer regfile
@@ -1737,28 +1593,34 @@ module riscv_decoder
               apu_op_o      = 2'b1;
               apu_lat_o     = (PIPE_REG_CAST==1) ? 2'h2 : 2'h1;
 
-	             case (fpu_src_fmt_o)
-	               fpnew_pkg::FP64 : begin
-		                if(~C_RVD) illegal_insn_o = 1;
-	               end	
-	               fpnew_pkg::FP32 : begin
-		                if(~C_RVF) illegal_insn_o = 1;
-	               end	
-	               fpnew_pkg::FP16 : begin
-		                if(~C_XF16) illegal_insn_o = 1;
-	               end	
-	               fpnew_pkg::FP16ALT : begin
-		                if(~C_XF16ALT) illegal_insn_o = 1;
-	               end	
-	               fpnew_pkg::FP8 : begin
-		                if(~C_XF8) illegal_insn_o = 1;
-	               end	
-	             endcase
-
+              unique case (instr_rdata_i[26:25]) //fix for casting to different formats other than FP32
+                2'b00: begin
+                  if (~C_RVF) illegal_insn_o = 1;
+                  else fpu_src_fmt_o = fpnew_pkg::FP32;
+                end
+                2'b01: begin
+                  if (~C_RVD) illegal_insn_o = 1;
+                  else fpu_src_fmt_o = fpnew_pkg::FP64;
+                end
+                2'b10: begin
+                  if (instr_rdata_i[14:12] == 3'b101) begin
+                    if (~C_XF16ALT) illegal_insn_o = 1;
+                    else fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                  end else if (~C_XF16) begin
+                    illegal_insn_o = 1;
+                  end else begin
+                    fpu_src_fmt_o = fpnew_pkg::FP16;
+                  end
+                end
+                2'b11: begin
+                  if (~C_XF8) illegal_insn_o = 1;
+                  else fpu_src_fmt_o = fpnew_pkg::FP8;
+                end
+              endcase // unique case (instr_rdata_i[26:25])
               // bits [21:20] used, other bits must be 0
               if (instr_rdata_i[24:21]) illegal_insn_o = 1'b1;   // in RV32, no casts to L allowed.
             end
-            // fcvt.fmt.int_fmt - Int to FP Conversion
+            // fcvt.fmt.ifmt - Int to FP Conversion
             5'b11010: begin
               regb_used_o   = 1'b0;
               reg_fp_a_o    = 1'b0; // go from integer regfile
@@ -1776,7 +1638,7 @@ module riscv_decoder
               // old fpu maps this to ALU ops
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 case (instr_rdata_i[14:12])
                   // fmv.x.s - move from floating point to gp register
@@ -1807,18 +1669,17 @@ module riscv_decoder
                   fp_rnd_mode_o       = 3'b011;  // passthrough without checking nan-box
                   // FP16ALT uses special encoding here
                   if (instr_rdata_i[14]) begin
-                     fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                     fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
                   end
-
                 // fclass.fmt - FP Classify
                 end else if (instr_rdata_i[14:12] == 3'b001 || (C_XF16ALT && instr_rdata_i[14:12] == 3'b101)) begin
                   fpu_op        = fpnew_pkg::CLASSIFY;
                   fp_rnd_mode_o = 3'b000;
                   // FP16ALT uses special encoding here
                   if (instr_rdata_i[14]) begin
-                     fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                     fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
                   end
                 end else begin
                   illegal_insn_o = 1'b1;
@@ -1832,7 +1693,7 @@ module riscv_decoder
               // old fpu maps this to ALU ops
               if (SHARED_FP==1) begin
                 apu_en         = 1'b0;
-                alu_en_o       = 1'b1;
+                alu_en         = 1'b1;
                 regfile_alu_we = 1'b1;
                 reg_fp_a_o     = 1'b0; // go from integer regfile
                 alu_operator_o = ALU_ADD;
@@ -1850,8 +1711,8 @@ module riscv_decoder
                 if (instr_rdata_i[14:12] == 3'b000 || (C_XF16ALT && instr_rdata_i[14:12] == 3'b100)) begin
                   // FP16ALT uses special encoding here
                   if (instr_rdata_i[14]) begin
-                     fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
-                     fpu_src_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_dst_fmt_o = fpnew_pkg::FP16ALT;
+                    fpu_src_fmt_o = fpnew_pkg::FP16ALT;
                   end
                 end else begin
                   illegal_insn_o = 1'b1;
@@ -1906,20 +1767,20 @@ module riscv_decoder
               // ADDMUL has format dependent latency
               ADDMUL : begin
                 unique case (fpu_dst_fmt_o)
-                  fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
-                  fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<3)    ? C_LAT_FP64+1    : 2'h0;
-                  fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
-                  fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
-                  fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
+                  fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
+                  fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<2)    ? C_LAT_FP64+1    : 2'h3;
+                  fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
+                  fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
+                  fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
                   default : ;
                 endcase
               end
               // DIVSQRT is iterative and takes more than 2 cycles
-              DIVSQRT : apu_lat_o = 2'h0;
+              DIVSQRT : apu_lat_o = 2'h3;
               // NONCOMP uses the same latency for all formats
-              NONCOMP : apu_lat_o = (C_LAT_NONCOMP<3) ? C_LAT_NONCOMP+1 : 2'h0;
+              NONCOMP : apu_lat_o = (C_LAT_NONCOMP<2) ? C_LAT_FP32+1 : 2'h3;
               // CONV uses the same latency for all formats
-              CONV    : apu_lat_o = (C_LAT_CONV<3) ? C_LAT_CONV+1 : 2'h0;
+              CONV    : apu_lat_o = (C_LAT_CONV<2) ? C_LAT_FP32+1 : 2'h3;
             endcase
           end
 
@@ -1940,7 +1801,7 @@ module riscv_decoder
         if (FPU==1) begin
           // using APU instead of ALU
           apu_en           = 1'b1;
-          alu_en_o         = 1'b0;
+          alu_en           = 1'b0;
           // Private and new shared FP use FPnew
           apu_flags_src_o  = (SHARED_FP==1) ? APU_FLAGS_FP : APU_FLAGS_FPNEW;
           apu_type_o       = APUTYPE_MAC;
@@ -1955,7 +1816,7 @@ module riscv_decoder
           reg_fp_c_o       = 1'b1;
           reg_fp_d_o       = 1'b1;
           fp_rnd_mode_o    = instr_rdata_i[14:12];
-          
+
           // Decode Formats
           unique case (instr_rdata_i[26:25])
             // FP32
@@ -1974,7 +1835,7 @@ module riscv_decoder
 
           // By default, src=dst
           fpu_src_fmt_o = fpu_dst_fmt_o;
-           
+
           // decode FP intstruction
           unique case (instr_rdata_i[6:0])
             // fmadd.fmt - FP Fused multiply-add
@@ -2037,11 +1898,11 @@ module riscv_decoder
           if (SHARED_FP!=1) begin
             // format dependent latency
             unique case (fpu_dst_fmt_o)
-              fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<3)    ? C_LAT_FP32+1    : 2'h0;
-              fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<3)    ? C_LAT_FP64+1    : 2'h0;
-              fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<3)    ? C_LAT_FP16+1    : 2'h0;
-              fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<3) ? C_LAT_FP16ALT+1 : 2'h0;
-              fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<3)     ? C_LAT_FP8+1     : 2'h0;
+              fpnew_pkg::FP32    : apu_lat_o = (C_LAT_FP32<2)    ? C_LAT_FP32+1    : 2'h3;
+              fpnew_pkg::FP64    : apu_lat_o = (C_LAT_FP64<2)    ? C_LAT_FP64+1    : 2'h3;
+              fpnew_pkg::FP16    : apu_lat_o = (C_LAT_FP16<2)    ? C_LAT_FP16+1    : 2'h3;
+              fpnew_pkg::FP16ALT : apu_lat_o = (C_LAT_FP16ALT<2) ? C_LAT_FP16ALT+1 : 2'h3;
+              fpnew_pkg::FP8     : apu_lat_o = (C_LAT_FP8<2)     ? C_LAT_FP8+1     : 2'h3;
               default : ;
             endcase
           end
@@ -2145,7 +2006,7 @@ module riscv_decoder
 
         case (instr_rdata_i[13:12])
           2'b00: begin // multiply with subword selection
-            alu_en_o           = 1'b0;
+            alu_en             = 1'b0;
 
             mult_sel_subword_o = instr_rdata_i[30];
             mult_signed_mode_o = {2{instr_rdata_i[31]}};
@@ -2163,7 +2024,7 @@ module riscv_decoder
           end
 
           2'b01: begin // MAC with subword selection
-            alu_en_o           = 1'b0;
+            alu_en             = 1'b0;
 
             mult_sel_subword_o = instr_rdata_i[30];
             mult_signed_mode_o = {2{instr_rdata_i[31]}};
@@ -2236,43 +2097,15 @@ module riscv_decoder
         rega_used_o         = 1'b1;
         imm_b_mux_sel_o     = IMMB_VS;
 
-       	ivec_op_o	    = 1'b1;
-
         // vector size
-
-	if(sb_legacy_i) begin
-          if (instr_rdata_i[12]) begin
-            alu_vec_mode_o  = VEC_MODE8;
-            mult_operator_o = MUL_DOT8;
-	  end else begin
-            alu_vec_mode_o = VEC_MODE16;
-            mult_operator_o = MUL_DOT16;
-          end
-	end	
-	else begin
-         case(alu_vec_mode_o)
-           VEC_MODE16 :
-             mult_operator_o = MUL_DOT16;
-           VEC_MODE8  :
-             mult_operator_o = MUL_DOT8;
-           VEC_MODE4  :
-             mult_operator_o = MUL_DOT4;
-           VEC_MODE2  :
-             mult_operator_o = MUL_DOT2;
-           MIXED_2x4  :
-             mult_operator_o = MIXED_MUL_2x4;
-           MIXED_2x8  :
-             mult_operator_o = MIXED_MUL_2x8;
-           MIXED_2x16 :
-             mult_operator_o = MIXED_MUL_2x16;
-           MIXED_4x8  :
-             mult_operator_o = MIXED_MUL_4x8;
-           MIXED_4x16 :
-             mult_operator_o = MIXED_MUL_4x16;
-           MIXED_8x16 :
-             mult_operator_o = MIXED_MUL_8x16;           
-         endcase // case (alu_vec_mode_o)
+        if (instr_rdata_i[12]) begin
+          alu_vec_mode_o  = VEC_MODE8;
+          mult_operator_o = MUL_DOT8;
+        end else begin
+          alu_vec_mode_o = VEC_MODE16;
+          mult_operator_o = MUL_DOT16;
         end
+
         // distinguish normal vector, sc and sci modes
         if (instr_rdata_i[14]) begin
           scalar_replication_o = 1'b1;
@@ -2288,7 +2121,6 @@ module riscv_decoder
           // normal register use
           regb_used_o = 1'b1;
         end
-
 
         // now decode the instruction
         unique case (instr_rdata_i[31:26])
@@ -2340,7 +2172,6 @@ module riscv_decoder
             regb_used_o    = 1'b1;
             regc_used_o    = 1'b1;
             regc_mux_o     = REGC_RD;
-
           end
 
           6'b01111_0: begin // pv.extract
@@ -2359,26 +2190,26 @@ module riscv_decoder
           end
 
           6'b10000_0: begin // pv.dotup
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b00;
             imm_b_mux_sel_o   = IMMB_VU;
             `USE_APU_DSP_MULT
           end
           6'b10001_0: begin // pv.dotusp
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b01;
             `USE_APU_DSP_MULT
           end
           6'b10011_0: begin // pv.dotsp
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b11;
             `USE_APU_DSP_MULT
           end
           6'b10100_0: begin // pv.sdotup
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b00;
             regc_used_o       = 1'b1;
@@ -2387,7 +2218,7 @@ module riscv_decoder
             `USE_APU_DSP_MULT
           end
           6'b10101_0: begin // pv.sdotusp
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b01;
             regc_used_o       = 1'b1;
@@ -2395,7 +2226,7 @@ module riscv_decoder
             `USE_APU_DSP_MULT
           end
           6'b10111_0: begin // pv.sdotsp
-            alu_en_o          = 1'b0;
+            alu_en            = 1'b0;
             mult_dot_en       = 1'b1;
             mult_dot_signed_o = 2'b11;
             regc_used_o       = 1'b1;
@@ -2406,11 +2237,9 @@ module riscv_decoder
           /*  COMPLEX INSTRUCTIONS */
 
           6'b01010_1: begin // pc.clpxmul.h.{r,i}.{/,div2,div4,div8}
-            alu_en_o             = 1'b0;
+            alu_en               = 1'b0;
             mult_dot_en          = 1'b1;
             mult_dot_signed_o    = 2'b11;
-            alu_vec_mode_o       = VEC_MODE16; 
-            mult_operator_o      = MUL_DOT16;
             is_clpx_o            = 1'b1;
             regc_used_o          = 1'b1;
             regc_mux_o           = REGC_RD;
@@ -2422,8 +2251,6 @@ module riscv_decoder
 
           6'b01101_1: begin // pv.subrotmj.h.{/,div2,div4,div8}
             alu_operator_o       = ALU_SUB;
-            alu_vec_mode_o       = VEC_MODE16; 
-            mult_operator_o      = MUL_DOT16;
             is_clpx_o            = 1'b1;
             scalar_replication_o = 1'b0;
             alu_op_b_mux_sel_o   = OP_B_REGB_OR_FWD;
@@ -2433,8 +2260,6 @@ module riscv_decoder
 
           6'b01011_1: begin // pv.cplxconj.h
             alu_operator_o       = ALU_ABS;
-            alu_vec_mode_o       = VEC_MODE16; 
-            mult_operator_o      = MUL_DOT16;
             is_clpx_o            = 1'b1;
             scalar_replication_o = 1'b0;
             regb_used_o          = 1'b0;
@@ -2442,8 +2267,6 @@ module riscv_decoder
 
           6'b01110_1: begin // pv.add.h.{div2,div4,div8}
             alu_operator_o       = ALU_ADD;
-            alu_vec_mode_o       = VEC_MODE16; 
-            mult_operator_o      = MUL_DOT16;
             is_clpx_o            = 1'b1;
             scalar_replication_o = 1'b0;
             alu_op_b_mux_sel_o   = OP_B_REGB_OR_FWD;
@@ -2452,8 +2275,6 @@ module riscv_decoder
 
           6'b01100_1: begin // pv.sub.h.{div2,div4,div8}
             alu_operator_o       = ALU_SUB;
-            alu_vec_mode_o       = VEC_MODE16; 
-            mult_operator_o      = MUL_DOT16;
             is_clpx_o            = 1'b1;
             scalar_replication_o = 1'b0;
             alu_op_b_mux_sel_o   = OP_B_REGB_OR_FWD;
@@ -2565,33 +2386,6 @@ module riscv_decoder
           imm_a_mux_sel_o     = IMMA_Z;
           imm_b_mux_sel_o     = IMMB_I;    // CSR address is encoded in I imm
           instr_multicycle_o  = 1'b1;
-
-          //aggiunta sb fpu: Controllo se sto scrivendo e che l'indirizzo sia uno di quelli per la sb fpu
-          //inoltre pongo ad uno il bit che riguarda il tipo di formato che sto modificando
-          /********************* Aggiunta sb fpu : I vari registri per selezionare i formati ****************************
-          * 0x007 : Seleziona solo fpu_dst_fmt                                                                         *
-          * 0x008 : Seleziona solo fpu_src_fmt (per fare casting)                                                      *
-          * 0x009 : Seleziona solo fpu_int_fmt (per fare casting)                                                         *
-          * 0x00a : Per fare casting da FP -> FP, permette di scivere il source e destination in una scittura sola     *
-          * 0x00b : Per fare casting da FP -> INT, permette di scrivere in un unica scrittura fpu_dst_fmt e fpu_int_fmt   *
-          * 0x00c : Per fare casting da INT -> FP, permette di scrivere in un unica scrittura fpu_src_fmt e fpu_int_fmt   *
-          * 0x00d : IVEC csr address
-          **************************************************************************************************************/
-          if (csr_sb_fpu_addr inside {[7:13]} && instr_rdata_i[13:12]==2'b01)  // Modified for ivec sb : Now it goes to 13 instead of 12, 0x00D = 13
-          begin
-             if (csr_sb_fpu_addr == 'h7 || csr_sb_fpu_addr == 'hA || csr_sb_fpu_addr == 'hC) begin
-                write_sb_csr_o |= 4'b0001;
-             end
-             if (csr_sb_fpu_addr == 'h8 || csr_sb_fpu_addr == 'hA || csr_sb_fpu_addr == 'hB) begin
-                write_sb_csr_o |= 4'b0010;
-             end
-             if (csr_sb_fpu_addr == 'h9 || csr_sb_fpu_addr == 'hB || csr_sb_fpu_addr == 'hC) begin
-                write_sb_csr_o |= 4'b0100;
-             end
-             if (csr_sb_fpu_addr == 'hD) begin // Added for ivec sb : Now if ivec csr is being written the correct flag is raised
-                write_sb_csr_o = 4'b1000;               
-             end
-          end
 
           if (instr_rdata_i[14] == 1'b1) begin
             // rs1 field is used as immediate
@@ -2723,6 +2517,7 @@ module riscv_decoder
   end
 
   // deassert we signals (in case of stalls)
+  assign alu_en_o          = (deassert_we_i) ? 1'b0          : alu_en;
   assign apu_en_o          = (deassert_we_i) ? 1'b0          : apu_en;
   assign mult_int_en_o     = (deassert_we_i) ? 1'b0          : mult_int_en;
   assign mult_dot_en_o     = (deassert_we_i) ? 1'b0          : mult_dot_en;

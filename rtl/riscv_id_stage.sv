@@ -27,18 +27,13 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import riscv_defines::*;
-import apu_core_package::*;
-
-`include "riscv_config.sv"
-
 // Source/Destination register instruction index
 `define REG_S1 19:15
 `define REG_S2 24:20
 `define REG_S4 31:27
 `define REG_D  11:07
 
-module riscv_id_stage
+module riscv_id_stage import riscv_defines::*; import apu_core_package::*;
 #(
   parameter N_HWLP            =  2,
   parameter N_HWLP_BITS       =  $clog2(N_HWLP),
@@ -59,220 +54,198 @@ module riscv_id_stage
   parameter APU_NUSFLAGS_CPU  =  5
 )
 (
-    input logic                            clk,
-    input logic                            rst_n,
+    input  logic        clk,
+    input  logic        rst_n,
 
-    input logic                            test_en_i,
-    input logic                            fregfile_disable_i,
+    input  logic        test_en_i,
+    input  logic        fregfile_disable_i,
 
-    input logic                            fetch_enable_i,
-    output logic                           ctrl_busy_o,
-    output logic                           core_ctrl_firstfetch_o,
-    output logic                           is_decoding_o,
+    input  logic        fetch_enable_i,
+    output logic        ctrl_busy_o,
+    output logic        core_ctrl_firstfetch_o,
+    output logic        is_decoding_o,
 
     // Interface to IF stage
-    input logic [N_HWLP-1:0]               hwlp_dec_cnt_i,
-    input logic                            is_hwlp_i,
-    input logic                            instr_valid_i,
-    input logic [31:0]                     instr_rdata_i, // comes from pipeline of IF stage
-    output logic                           instr_req_o,
+    input  logic [N_HWLP-1:0] hwlp_dec_cnt_i,
+    input  logic              is_hwlp_i,
+    input  logic              instr_valid_i,
+    input  logic       [31:0] instr_rdata_i,      // comes from pipeline of IF stage
+    output logic              instr_req_o,
 
 
     // Jumps and branches
-    output logic                           branch_in_ex_o,
-    input logic                            branch_decision_i,
-    output logic [31:0]                    jump_target_o,
+    output logic        branch_in_ex_o,
+    input  logic        branch_decision_i,
+    output logic [31:0] jump_target_o,
 
     // IF and ID stage signals
-    output logic                           clear_instr_valid_o,
-    output logic                           pc_set_o,
-    output logic [2:0]                     pc_mux_o,
-    output logic [2:0]                     exc_pc_mux_o,
-    output logic                           trap_addr_mux_o,
+    output logic        clear_instr_valid_o,
+    output logic        pc_set_o,
+    output logic [2:0]  pc_mux_o,
+    output logic [2:0]  exc_pc_mux_o,
+    output logic        trap_addr_mux_o,
 
-    input logic                            illegal_c_insn_i,
-    input logic                            is_compressed_i,
-    input logic                            is_fetch_failed_i,
+    input  logic        illegal_c_insn_i,
+    input  logic        is_compressed_i,
+    input  logic        is_fetch_failed_i,
 
-    input logic [31:0]                     pc_if_i,
-    input logic [31:0]                     pc_id_i,
+    input  logic [31:0] pc_if_i,
+    input  logic [31:0] pc_id_i,
 
     // Stalls
-    output logic                           halt_if_o, // controller requests a halt of the IF stage
+    output logic        halt_if_o,      // controller requests a halt of the IF stage
 
-    output logic                           id_ready_o, // ID stage is ready for the next instruction
-    input logic                            ex_ready_i, // EX stage is ready for the next instruction
-    input logic                            wb_ready_i, // WB stage is ready for the next instruction
+    output logic        id_ready_o,     // ID stage is ready for the next instruction
+    input  logic        ex_ready_i,     // EX stage is ready for the next instruction
+    input  logic        wb_ready_i,     // WB stage is ready for the next instruction
 
-    output logic                           id_valid_o, // ID stage is done
-    input logic                            ex_valid_i, // EX stage is done
+    output logic        id_valid_o,     // ID stage is done
+    input  logic        ex_valid_i,     // EX stage is done
 
     // Pipeline ID/EX
-    output logic [31:0]                    pc_ex_o,
+    output logic [31:0] pc_ex_o,
 
-    output logic [31:0]                    alu_operand_a_ex_o,
-    output logic [31:0]                    alu_operand_b_ex_o,
-    output logic [31:0]                    alu_operand_c_ex_o,
-    output logic [ 4:0]                    bmask_a_ex_o,
-    output logic [ 4:0]                    bmask_b_ex_o,
-    output logic [ 1:0]                    imm_vec_ext_ex_o,
+    output logic [31:0] alu_operand_a_ex_o,
+    output logic [31:0] alu_operand_b_ex_o,
+    output logic [31:0] alu_operand_c_ex_o,
+    output logic [ 4:0] bmask_a_ex_o,
+    output logic [ 4:0] bmask_b_ex_o,
+    output logic [ 1:0] imm_vec_ext_ex_o,
+    output logic [ 1:0] alu_vec_mode_ex_o,
 
-    output                                 ivec_mode_fmt alu_vec_mode_ex_o, //modified for ivec sb : changed from logic to ivec_mode_fmt
+    output logic [5:0]  regfile_waddr_ex_o,
+    output logic        regfile_we_ex_o,
 
-
-    output logic [5:0]                     regfile_waddr_ex_o,
-    output logic                           regfile_we_ex_o,
-
-    output logic [5:0]                     regfile_alu_waddr_ex_o,
-    output logic                           regfile_alu_we_ex_o,
-
-    output logic [5:0]                     regfile_alu_waddr2_ex_o,
-    output logic                           ivec_op_ex_o, //Added for ivec sb : needed inside the alu for discrimination between vectorial and scalar operations
+    output logic [5:0]  regfile_alu_waddr_ex_o,
+    output logic        regfile_alu_we_ex_o,
 
     // ALU
-    output logic                           alu_en_ex_o,
-    output logic [ALU_OP_WIDTH-1:0]        alu_operator_ex_o,
-    output logic                           alu_is_clpx_ex_o,
-    output logic                           alu_is_subrot_ex_o,
-    output logic [ 1:0]                    alu_clpx_shift_ex_o,
+    output logic        alu_en_ex_o,
+    output logic [ALU_OP_WIDTH-1:0] alu_operator_ex_o,
+    output logic        alu_is_clpx_ex_o,
+    output logic        alu_is_subrot_ex_o,
+    output logic [ 1:0] alu_clpx_shift_ex_o,
+
 
     // MUL
-    output                                 mult_op_type mult_operator_ex_o, //Modified for ivec sb : changed from logic to mult_op_type
+    output logic [ 2:0] mult_operator_ex_o,
+    output logic [31:0] mult_operand_a_ex_o,
+    output logic [31:0] mult_operand_b_ex_o,
+    output logic [31:0] mult_operand_c_ex_o,
+    output logic        mult_en_ex_o,
+    output logic        mult_sel_subword_ex_o,
+    output logic [ 1:0] mult_signed_mode_ex_o,
+    output logic [ 4:0] mult_imm_ex_o,
 
-    output logic [31:0]                    mult_operand_a_ex_o,
-    output logic [31:0]                    mult_operand_b_ex_o,
-    output logic [31:0]                    mult_operand_c_ex_o,
-    output logic                           mult_en_ex_o,
-    output logic                           mult_sel_subword_ex_o,
-    output logic [ 1:0]                    mult_signed_mode_ex_o,
-    output logic [ 4:0]                    mult_imm_ex_o,
-
-    output logic [31:0]                    mult_dot_op_h_a_ex_o,
-    output logic [31:0]                    mult_dot_op_h_b_ex_o,
-    output logic [31:0]                    mult_dot_op_b_a_ex_o,
-    output logic [31:0]                    mult_dot_op_b_b_ex_o,
-    output logic [31:0]                    mult_dot_op_n_a_ex_o,
-    output logic [31:0]                    mult_dot_op_n_b_ex_o,
-    output logic [31:0]                    mult_dot_op_c_a_ex_o,
-    output logic [31:0]                    mult_dot_op_c_b_ex_o,
-    output logic [31:0]                    mult_dot_op_c_ex_o,
-    output logic [ 1:0]                    mult_dot_signed_ex_o,
-    output logic                           mult_is_clpx_ex_o,
-    output logic [ 1:0]                    mult_clpx_shift_ex_o,
-    output logic                           mult_clpx_img_ex_o,
-    output logic                           dot_spr_operand_ex_o,
+    output logic [31:0] mult_dot_op_a_ex_o,
+    output logic [31:0] mult_dot_op_b_ex_o,
+    output logic [31:0] mult_dot_op_c_ex_o,
+    output logic [ 1:0] mult_dot_signed_ex_o,
+    output logic        mult_is_clpx_ex_o,
+    output logic [ 1:0] mult_clpx_shift_ex_o,
+    output logic        mult_clpx_img_ex_o,
 
     // APU
-    output logic                           apu_en_ex_o,
-    output logic [WAPUTYPE-1:0]            apu_type_ex_o,
-    output logic [APU_WOP_CPU-1:0]         apu_op_ex_o,
-    output logic [1:0]                     apu_lat_ex_o,
-    output logic [APU_NARGS_CPU-1:0][31:0] apu_operands_ex_o,
-    output logic [APU_NDSFLAGS_CPU-1:0]    apu_flags_ex_o,
-    output logic [5:0]                     apu_waddr_ex_o,
+    output logic                        apu_en_ex_o,
+    output logic [WAPUTYPE-1:0]         apu_type_ex_o,
+    output logic [APU_WOP_CPU-1:0]      apu_op_ex_o,
+    output logic [1:0]                  apu_lat_ex_o,
+    output logic [APU_NARGS_CPU-1:0][31:0]                 apu_operands_ex_o,
+    output logic [APU_NDSFLAGS_CPU-1:0] apu_flags_ex_o,
+    output logic [5:0]                  apu_waddr_ex_o,
 
-    output logic [2:0][5:0]                apu_read_regs_o,
-    output logic [2:0]                     apu_read_regs_valid_o,
-    input logic                            apu_read_dep_i,
-    output logic [1:0][5:0]                apu_write_regs_o,
-    output logic [1:0]                     apu_write_regs_valid_o,
-    input logic                            apu_write_dep_i,
-    output logic                           apu_perf_dep_o,
-    input logic                            apu_busy_i,
-    input logic [C_RM-1:0]                 frm_i,
-
-    input                                  ivec_mode_fmt csr_ivec_fmt_i, //Added ivec sb : current VEC_MODE coming from cs registers
-    input logic [NBITS_MIXED_CYCLES-1:0]   csr_current_cycle_i, //Added for ivec sb : used by mixed precision controller to know the current mixed cycle
-    input logic [NBITS_MAX_KER-1:0]        csr_skip_size_i, //Added for ivec sb : used by mpc to know after how many macs it can modify next cycle
-
-    output logic [NBITS_MIXED_CYCLES-1:0]  next_cycle_ex_o, //added for ivec sb : used to write next cycle into csr
-    output logic                           mux_sel_wcsr_ex_o, //added for ivec sb : used to override normal csr write signals
-    input logic                            sb_legacy_i,
+    output logic [2:0][5:0]            apu_read_regs_o,
+    output logic [2:0]                 apu_read_regs_valid_o,
+    input  logic                       apu_read_dep_i,
+    output logic [1:0][5:0]            apu_write_regs_o,
+    output logic [1:0]                 apu_write_regs_valid_o,
+    input  logic                       apu_write_dep_i,
+    output logic                       apu_perf_dep_o,
+    input  logic                       apu_busy_i,
+    input  logic [C_RM-1:0]            frm_i,
 
     // CSR ID/EX
-    output logic                           csr_access_ex_o,
-    output logic [1:0]                     csr_op_ex_o,
-    input                                  PrivLvl_t current_priv_lvl_i,
-    output logic                           csr_irq_sec_o,
-    output logic [5:0]                     csr_cause_o,
-    output logic                           csr_save_if_o,
-    output logic                           csr_save_id_o,
-    output logic                           csr_save_ex_o,
-    output logic                           csr_restore_mret_id_o,
-    output logic                           csr_restore_uret_id_o,
+    output logic        csr_access_ex_o,
+    output logic [1:0]  csr_op_ex_o,
+    input  PrivLvl_t    current_priv_lvl_i,
+    output logic        csr_irq_sec_o,
+    output logic [5:0]  csr_cause_o,
+    output logic        csr_save_if_o,
+    output logic        csr_save_id_o,
+    output logic        csr_save_ex_o,
+    output logic        csr_restore_mret_id_o,
+    output logic        csr_restore_uret_id_o,
 
-    output logic                           csr_restore_dret_id_o,
+    output logic        csr_restore_dret_id_o,
 
-    output logic                           csr_save_cause_o,
+    output logic        csr_save_cause_o,
+
+    // Stack protection
+    output logic        stack_access_o,
 
     // hwloop signals
-    output logic [N_HWLP-1:0] [31:0]       hwlp_start_o,
-    output logic [N_HWLP-1:0] [31:0]       hwlp_end_o,
-    output logic [N_HWLP-1:0] [31:0]       hwlp_cnt_o,
+    output logic [N_HWLP-1:0] [31:0] hwlp_start_o,
+    output logic [N_HWLP-1:0] [31:0] hwlp_end_o,
+    output logic [N_HWLP-1:0] [31:0] hwlp_cnt_o,
 
     // hwloop signals from CS register
-    input logic [N_HWLP_BITS-1:0]          csr_hwlp_regid_i,
-    input logic [2:0]                      csr_hwlp_we_i,
-    input logic [31:0]                     csr_hwlp_data_i,
+    input  logic   [N_HWLP_BITS-1:0] csr_hwlp_regid_i,
+    input  logic               [2:0] csr_hwlp_we_i,
+    input  logic              [31:0] csr_hwlp_data_i,
 
     // Interface to load store unit
-    output logic                           data_req_ex_o,
-    output logic                           data_we_ex_o,
-    output logic [1:0]                     data_type_ex_o,
-    output logic [1:0]                     data_sign_ext_ex_o,
-    output logic [1:0]                     data_reg_offset_ex_o,
-    output logic                           data_load_event_ex_o,
+    output logic        data_req_ex_o,
+    output logic        data_we_ex_o,
+    output logic [1:0]  data_type_ex_o,
+    output logic [1:0]  data_sign_ext_ex_o,
+    output logic [1:0]  data_reg_offset_ex_o,
+    output logic        data_load_event_ex_o,
 
-    output logic                           data_misaligned_ex_o,
+    output logic        data_misaligned_ex_o,
 
-    output logic                           prepost_useincr_ex_o,
-    input logic                            data_misaligned_i,
-    input logic                            data_err_i,
-    output logic                           data_err_ack_o,
+    output logic        prepost_useincr_ex_o,
+    input  logic        data_misaligned_i,
+    input  logic        data_err_i,
+    output logic        data_err_ack_o,
 
-    //RNN_EXT
-    output logic [2:0]                     lsu_tosprw_ex_o,
-    output logic [1:0]                     lsu_tospra_ex_o,
-    input logic                            loadComputeVLIW_ex_i,
-    output logic                           update_w_id_o, //added for status-based MACLOAD
-    output logic                           update_a_id_o, //added for status-based MACLOAD
+    output logic [5:0]  atop_ex_o,
 
     // Interrupt signals
-    input logic                            irq_i,
-    input logic                            irq_sec_i,
-    input logic [4:0]                      irq_id_i,
-    input logic                            m_irq_enable_i,
-    input logic                            u_irq_enable_i,
-    output logic                           irq_ack_o,
-    output logic [4:0]                     irq_id_o,
-    output logic [5:0]                     exc_cause_o,
+    input  logic        irq_i,
+    input  logic        irq_sec_i,
+    input  logic [4:0]  irq_id_i,
+    input  logic        m_irq_enable_i,
+    input  logic        u_irq_enable_i,
+    output logic        irq_ack_o,
+    output logic [4:0]  irq_id_o,
+    output logic [5:0]  exc_cause_o,
 
     // Debug Signal
-    output logic                           debug_mode_o,
-    output logic [2:0]                     debug_cause_o,
-    output logic                           debug_csr_save_o,
-    input logic                            debug_req_i,
-    input logic                            debug_single_step_i,
-    input logic                            debug_ebreakm_i,
-    input logic                            debug_ebreaku_i,
+    output logic        debug_mode_o,
+    output logic [2:0]  debug_cause_o,
+    output logic        debug_csr_save_o,
+    input  logic        debug_req_i,
+    input  logic        debug_single_step_i,
+    input  logic        debug_ebreakm_i,
+    input  logic        debug_ebreaku_i,
 
     // Forward Signals
-    input logic [5:0]                      regfile_waddr_wb_i,
-    input logic                            regfile_we_wb_i,
-    input logic [31:0]                     regfile_wdata_wb_i, // From wb_stage: selects data from data memory, ex_stage result and sp rdata
+    input  logic [5:0]  regfile_waddr_wb_i,
+    input  logic        regfile_we_wb_i,
+    input  logic [31:0] regfile_wdata_wb_i, // From wb_stage: selects data from data memory, ex_stage result and sp rdata
 
-    input logic [5:0]                      regfile_alu_waddr_fw_i,
-    input logic                            regfile_alu_we_fw_i,
-    input logic [31:0]                     regfile_alu_wdata_fw_i,
+    input  logic [5:0]  regfile_alu_waddr_fw_i,
+    input  logic        regfile_alu_we_fw_i,
+    input  logic [31:0] regfile_alu_wdata_fw_i,
 
     // from ALU
-    input logic                            mult_multicycle_i, // when we need multiple cycles in the multiplier and use op c as storage
+    input  logic        mult_multicycle_i,    // when we need multiple cycles in the multiplier and use op c as storage
 
     // Performance Counters
-    output logic                           perf_jump_o, // we are executing a jump instruction
-    output logic                           perf_jr_stall_o, // jump-register-hazard
-    output logic                           perf_ld_stall_o, // load-use-hazard
-    output logic                           perf_pipeline_stall_o //extra cycles from elw
+    output logic        perf_jump_o,          // we are executing a jump instruction
+    output logic        perf_jr_stall_o,      // jump-register-hazard
+    output logic        perf_ld_stall_o,      // load-use-hazard
+    output logic        perf_pipeline_stall_o //extra cycles from elw
 );
 
   logic [31:0] instr;
@@ -326,7 +299,6 @@ module riscv_id_stage
   logic [31:0] imm_shuffleh_type;
   logic [31:0] imm_shuffle_type;
   logic [31:0] imm_clip_type;
-  logic [31:0] imm_macload_type;
 
   logic [31:0] imm_a;       // contains the immediate for operand b
   logic [31:0] imm_b;       // contains the immediate for operand b
@@ -353,7 +325,7 @@ module riscv_id_stage
   logic        fregfile_ena; // whether the fp register file is enabled
 
   logic [5:0]  regfile_waddr_id;
-  logic [5:0]  regfile_alu_waddr_id, regfile_alu_waddr2_id; //RNN_EXT
+  logic [5:0]  regfile_alu_waddr_id;
   logic        regfile_alu_we_id, regfile_alu_we_dec_id;
 
   logic [31:0] regfile_data_ra_id;
@@ -373,19 +345,17 @@ module riscv_id_stage
   logic [1:0]  jump_target_mux_sel;
 
   // Multiplier Control
-  mult_op_type mult_operator;    // multiplication operation selection //Modified for ivec sb : changed from logic to mult_op_type
-
+  logic [2:0]  mult_operator;    // multiplication operation selection
   logic        mult_en;          // multiplication is used instead of ALU
   logic        mult_int_en;      // use integer multiplier
   logic        mult_sel_subword; // Select a subword when doing multiplications
   logic [1:0]  mult_signed_mode; // Signed mode multiplication at the output of the controller, and before the pipe registers
   logic        mult_dot_en;      // use dot product
   logic [1:0]  mult_dot_signed;  // Signed mode dot products (can be mixed types)
-  logic        dot_spr_operand;
 
   // FPU signals
-  logic [C_FPNEW_FMTBITS-1:0]  fpu_dst_fmt;
   logic [C_FPNEW_FMTBITS-1:0]  fpu_src_fmt;
+  logic [C_FPNEW_FMTBITS-1:0]  fpu_dst_fmt;
   logic [C_FPNEW_IFMTBITS-1:0] fpu_int_fmt;
 
   // APU signals
@@ -417,8 +387,9 @@ module riscv_id_stage
   logic [1:0]  data_reg_offset_id;
   logic        data_req_id;
   logic        data_load_event_id;
-  logic [2:0]  lsu_tosprw_id;   //RNN_EXT
-  logic [1:0]  lsu_tospra_id;   //RNN_EXT
+
+  // Atomic memory instruction
+  logic [5:0]  atop_id;
 
   // hwloop signals
   logic [N_HWLP_BITS-1:0] hwloop_regid, hwloop_regid_int;
@@ -433,15 +404,6 @@ module riscv_id_stage
   logic            [31:0] hwloop_cnt, hwloop_cnt_int;
 
   logic                   hwloop_valid;
-
-  //Added for ivec sb : Now it has 4 bit, 3 for sb fpu and 1 for ivec. 
-  logic [3:0]            write_sb_csr_n;  //aggiunta sb fpu: segnale da dec -> controller DA MODIFICARE: va anche alla pipeline per ora, devo togliere l'igresso del controller
-  logic [3:0]            write_sb_csr_q;  //aggiunta sb fpu: mi serve per fare il fw del formato
-  //per il source
-
-  //Added for ivec sb : one of these signals will get to the decoder depending if the last instruction was writing to 0x00D or not
-  ivec_mode_fmt   csr_ivec_fmt;  //Added for ivec sb : If last instruction didn't write to 0x00D this signal will be fed to the decoder
-  ivec_mode_fmt   ivec_fmt_fw;   //Added for ivec sb : If last instruction WAS writing to 0x00D the cs reg it's not yet updated so this will be used by the decoder
 
   // CSR control
   logic        csr_access;
@@ -479,9 +441,7 @@ module riscv_id_stage
   logic [ 1:0] imm_vec_ext_id;
   logic [ 4:0] mult_imm_id;
 
-  ivec_mode_fmt alu_vec_mode; //modified for ivec sb : changed from logic to ivec_mode_fmt
-  logic         ivec_op;        //Added for ivec sb : this will be connected to the id/ex pipeline
-
+  logic [ 1:0] alu_vec_mode;
   logic        scalar_replication;
   logic        scalar_replication_c;
 
@@ -501,6 +461,8 @@ module riscv_id_stage
   logic        mret_dec;
   logic        uret_dec;
   logic        dret_dec;
+
+  logic        stack_access;
 
   assign instr = instr_rdata_i;
 
@@ -530,10 +492,6 @@ module riscv_id_stage
   // The end result is a mask that has 1's set in the lower part
   // TODO: check if this can be shared with the bit-manipulation unit
   assign imm_clip_type    = (32'h1 << instr[24:20]) - 1;
-
-  // MAC&LOAD Immediate. This selects which SPR to be used in current operation and,
-  // eventually, to be updated
-  assign imm_macload_type = {27'h0, instr[24:20]};
 
   //-----------------------------------------------------------------------------
   //-- FPU Register file enable:
@@ -567,7 +525,6 @@ module riscv_id_stage
   // Used for prepost load/store and multiplier
   assign regfile_alu_waddr_id = regfile_alu_waddr_mux_sel ?
                                 regfile_waddr_id : regfile_addr_ra_id;
-  assign regfile_alu_waddr2_id = (lsu_tosprw_id[0] | lsu_tospra_id[0]) ?  regfile_addr_ra_id : 'b0; 
 
   // Forwarding control signals
   assign reg_d_ex_is_reg_a_id  = (regfile_waddr_ex_o     == regfile_addr_ra_id) && (rega_used_dec == 1'b1) && (regfile_addr_ra_id != '0);
@@ -589,10 +546,6 @@ module riscv_id_stage
 
 
   assign mult_en = mult_int_en | mult_dot_en;
-
-  // Forwording 
-  assign update_w_id_o = lsu_tosprw_id[0];
-  assign update_a_id_o = lsu_tospra_id[0];
 
   ///////////////////////////////////////////////
   //  _   ___        ___     ___   ___  ____   //
@@ -735,7 +688,6 @@ module riscv_id_stage
       IMMB_VU:     imm_b = imm_vu_type;
       IMMB_SHUF:   imm_b = imm_shuffle_type;
       IMMB_CLIP:   imm_b = {1'b0, imm_clip_type[31:1]};
-      IMMB_MACL:   imm_b = imm_macload_type;
       default:     imm_b = imm_i_type;
     endcase
   end
@@ -754,29 +706,14 @@ module riscv_id_stage
 
 
   // scalar replication for operand B and shuffle type
-  always_comb begin : operandbvec
-    case (alu_vec_mode)
-      VEC_MODE16: begin
-        operand_b_vec    = {2{operand_b[15:0]}};
-        imm_shuffle_type = imm_shuffleh_type;
-      end
-      VEC_MODE8: begin
-        operand_b_vec    = {4{operand_b[7:0]}};
-        imm_shuffle_type = imm_shuffleb_type;
-      end
-      VEC_MODE4: begin
-        operand_b_vec    = {8{operand_b[3:0]}};
-        imm_shuffle_type = imm_shuffleh_type;
-      end
-      VEC_MODE2: begin
-        operand_b_vec    = {16{operand_b[1:0]}};
-        imm_shuffle_type = imm_shuffleh_type;
-      end
-      default: begin
+  always_comb begin
+    if (alu_vec_mode == VEC_MODE8) begin
+      operand_b_vec    = {4{operand_b[7:0]}};
+      imm_shuffle_type = imm_shuffleb_type;
+    end else begin
       operand_b_vec    = {2{operand_b[15:0]}};
       imm_shuffle_type = imm_shuffleh_type;
-      end
-    endcase;
+    end
   end
 
   // choose normal or scalar replicated version of operand b
@@ -889,12 +826,6 @@ module riscv_id_stage
       default:   mult_imm_id = '0;
     endcase
   end
-
-  //Added for ivec sb : making sure the instructions that is decoding is using the correct value of VEC_MODE
-  assign ivec_fmt_fw  = ivec_mode_fmt'(alu_operand_a_ex_o[IVEC_FMT_BITS-1:0]);
-  assign csr_ivec_fmt = write_sb_csr_q[3] ? ivec_fmt_fw : csr_ivec_fmt_i;
-
-
 
   /////////////////////////////
   // APU operand assignment  //
@@ -1158,11 +1089,6 @@ module riscv_id_stage
     .alu_op_b_mux_sel_o              ( alu_op_b_mux_sel          ),
     .alu_op_c_mux_sel_o              ( alu_op_c_mux_sel          ),
     .alu_vec_mode_o                  ( alu_vec_mode              ),
-
-    .sb_legacy_i                     ( sb_legacy_i               ),
-    .ivec_fmt_i                      ( csr_ivec_fmt              ),
-    .ivec_op_o                       ( ivec_op                   ), //Added for ivec sb : needed to descriminate from vectorial op
-
     .scalar_replication_o            ( scalar_replication        ),
     .scalar_replication_c_o          ( scalar_replication_c      ),
     .imm_a_mux_sel_o                 ( imm_a_mux_sel             ),
@@ -1179,11 +1105,9 @@ module riscv_id_stage
     .mult_imm_mux_o                  ( mult_imm_mux              ),
     .mult_dot_en_o                   ( mult_dot_en               ),
     .mult_dot_signed_o               ( mult_dot_signed           ),
-    .dot_spr_operand_o               ( dot_spr_operand           ), 
 
     // FPU / APU signals
     .frm_i                           ( frm_i                     ),
-
     .fpu_src_fmt_o                   ( fpu_src_fmt               ),
     .fpu_dst_fmt_o                   ( fpu_dst_fmt               ),
     .fpu_int_fmt_o                   ( fpu_int_fmt               ),
@@ -1201,13 +1125,13 @@ module riscv_id_stage
     .regfile_alu_waddr_sel_o         ( regfile_alu_waddr_mux_sel ),
 
     // CSR control signals
-
-    .write_sb_csr_o                  ( write_sb_csr_n            ), //aggiunta sb fpu: aggiunto output del decoder : MODIFICA -> PER ORA COMMENTO LO STALLO
-
     .csr_access_o                    ( csr_access                ),
     .csr_status_o                    ( csr_status                ),
     .csr_op_o                        ( csr_op                    ),
     .current_priv_lvl_i              ( current_priv_lvl_i        ),
+
+    // Stack protection
+    .stack_access_o                  ( stack_access              ),
 
     // Data bus interface
     .data_req_o                      ( data_req_id               ),
@@ -1217,8 +1141,9 @@ module riscv_id_stage
     .data_sign_extension_o           ( data_sign_ext_id          ),
     .data_reg_offset_o               ( data_reg_offset_id        ),
     .data_load_event_o               ( data_load_event_id        ),
-    .lsu_tosprw_o                    ( lsu_tosprw_id              ), //RNN_EXT
-    .lsu_tospra_o                    ( lsu_tospra_id              ), //RNN_EXT
+
+    // Atomic memory access
+    .atop_o                          ( atop_id                   ),
 
     // hwloop signals
     .hwloop_we_o                     ( hwloop_we_int             ),
@@ -1270,6 +1195,8 @@ module riscv_id_stage
     .mret_dec_i                     ( mret_dec               ),
     .uret_dec_i                     ( uret_dec               ),
     .dret_dec_i                     ( dret_dec               ),
+
+
     .pipe_flush_i                   ( pipe_flush_dec         ),
     .ebrk_insn_i                    ( ebrk_insn              ),
     .fencei_insn_i                  ( fencei_insn_dec        ),
@@ -1277,6 +1204,7 @@ module riscv_id_stage
     .instr_multicycle_i             ( instr_multicycle       ),
 
     .hwloop_mask_o                  ( hwloop_mask            ),
+
     // from IF/ID pipeline
     .instr_valid_i                  ( instr_valid_i          ),
 
@@ -1353,7 +1281,6 @@ module riscv_id_stage
     // Write targets from ID
     .regfile_we_id_i                ( regfile_alu_we_dec_id  ),
     .regfile_alu_waddr_id_i         ( regfile_alu_waddr_id   ),
-    .regfile_alu_waddr2_id_i        ( regfile_alu_waddr2_id  ),   
 
     // Forwarding signals from regfile
     .regfile_we_ex_i                ( regfile_we_ex_o        ),
@@ -1392,10 +1319,6 @@ module riscv_id_stage
     .ex_valid_i                     ( ex_valid_i             ),
 
     .wb_ready_i                     ( wb_ready_i             ),
-
-
-    .computeLoadVLIW_i              (loadComputeVLIW_ex_i),
-
 
     // Performance Counters
     .perf_jump_o                    ( perf_jump_o            ),
@@ -1483,48 +1406,6 @@ module riscv_id_stage
 
   assign hwloop_valid = instr_valid_i & clear_instr_valid_o & is_hwlp_i;
 
-  ///////////////////////////////////////////////////////////////////////////////////
-  //                   ____ ___  _   _ _____ ____   ___  _     _     _____ ____    //
-  //                  / ___/ _ \| \ | |_   _|  _ \ / _ \| |   | |   | ____|  _ \   //
-  // MIXED_PRECISION-| |  | | | |  \| | | | | |_) | | | | |   | |   |  _| | |_) |  //
-  //                 | |__| |_| | |\  | | | |  _ <| |_| | |___| |___| |___|  _ <   //
-  //                  \____\___/|_| \_| |_| |_| \_\\___/|_____|_____|_____|_| \_\  //
-  //                                                                               //
-  ///////////////////////////////////////////////////////////////////////////////////
-
-   logic [NBITS_MIXED_CYCLES-1:0] current_cycle;
-   logic [NBITS_MIXED_CYCLES-1:0] next_cycle;
-   mux_sel_mpc                    cc_mux_sel_mpc;
-   logic                          mux_sel_wcsr;   
-
-   mixed_precision_controller mpc_i 
-     (
-      .clk             ( clk              ),
-      .rst_n           ( rst_n            ),
-      .illegal_insn_i  ( illegal_insn_dec ),
-      .is_decoding_i   ( is_decoding_o    ),
-      .ex_ready_i      ( ex_ready_i       ),
-      .ivec_fmt_i      ( csr_ivec_fmt     ),
-      .current_cycle_i ( current_cycle    ),      
-      .instr_rdata_i   ( instr_rdata_i    ),
-      .skip_size_i     ( csr_skip_size_i  ),
-      .next_cycle_o    ( next_cycle       ),
-      .mux_sel_wcsr_o  ( mux_sel_wcsr     ),
-      .mux_sel_mpc_o   ( cc_mux_sel_mpc   )                       
-      );
-
-   always_comb begin
-      case(cc_mux_sel_mpc)
-        MPC_CSR :
-          current_cycle = csr_current_cycle_i;
-        MPC_CSR_WRITE :
-          current_cycle = alu_operand_a_ex_o[NBITS_MIXED_CYCLES-1:0];
-        MPC_MIX_CNTRL :
-          current_cycle = next_cycle_ex_o;
-        default :
-          current_cycle = csr_current_cycle_i;        
-      endcase      
-   end // always_comb
 
   /////////////////////////////////////////////////////////////////////////////////
   //   ___ ____        _______  __  ____ ___ ____  _____ _     ___ _   _ _____   //
@@ -1547,16 +1428,12 @@ module riscv_id_stage
       bmask_a_ex_o                <= '0;
       bmask_b_ex_o                <= '0;
       imm_vec_ext_ex_o            <= '0;
-
-      alu_vec_mode_ex_o           <= VEC_MODE32;
-      ivec_op_ex_o                <= '0; //Added for ivec sb : this will go to alu for discrimination between vector and scalar op
-
+      alu_vec_mode_ex_o           <= '0;
       alu_clpx_shift_ex_o         <= 2'b0;
       alu_is_clpx_ex_o            <= 1'b0;
       alu_is_subrot_ex_o          <= 1'b0;
 
-      mult_operator_ex_o          <= MUL_MAC32;  //Modified for ivec sb : first was '0 but enum is strongly typed so it needed to be changed to default symbol
-
+      mult_operator_ex_o          <= '0;
       mult_operand_a_ex_o         <= '0;
       mult_operand_b_ex_o         <= '0;
       mult_operand_c_ex_o         <= '0;
@@ -1565,20 +1442,13 @@ module riscv_id_stage
       mult_signed_mode_ex_o       <= 2'b00;
       mult_imm_ex_o               <= '0;
 
-      mult_dot_op_h_a_ex_o          <= '0;
-      mult_dot_op_h_b_ex_o          <= '0;
-      mult_dot_op_b_a_ex_o          <= '0;
-      mult_dot_op_b_b_ex_o          <= '0;
-      mult_dot_op_n_a_ex_o          <= '0;
-      mult_dot_op_n_b_ex_o          <= '0;
-      mult_dot_op_c_a_ex_o          <= '0;
-      mult_dot_op_c_b_ex_o          <= '0;
+      mult_dot_op_a_ex_o          <= '0;
+      mult_dot_op_b_ex_o          <= '0;
       mult_dot_op_c_ex_o          <= '0;
       mult_dot_signed_ex_o        <= '0;
       mult_is_clpx_ex_o           <= 1'b0;
       mult_clpx_shift_ex_o        <= 2'b0;
       mult_clpx_img_ex_o          <= 1'b0;
-      dot_spr_operand_ex_o        <= 1'b0;
 
       apu_en_ex_o                 <= '0;
       apu_type_ex_o               <= '0;
@@ -1595,19 +1465,11 @@ module riscv_id_stage
       regfile_we_ex_o             <= 1'b0;
 
       regfile_alu_waddr_ex_o      <= 6'b0;
-      regfile_alu_waddr2_ex_o     <= 6'b0;
       regfile_alu_we_ex_o         <= 1'b0;
       prepost_useincr_ex_o        <= 1'b0;
 
       csr_access_ex_o             <= 1'b0;
       csr_op_ex_o                 <= CSR_OP_NONE;
-
-      write_sb_csr_q              <= '0;   //Aggiunta sb fpu : Inizializzazione write_sb_csr_q
-      
-      //added for ivec sb : Mux selector and next cycle for mixed precision ops.
-      mux_sel_wcsr_ex_o           <= 0;       
-      next_cycle_ex_o             <= '0;       
-
 
       data_we_ex_o                <= 1'b0;
       data_type_ex_o              <= 2'b0;
@@ -1615,10 +1477,10 @@ module riscv_id_stage
       data_reg_offset_ex_o        <= 2'b0;
       data_req_ex_o               <= 1'b0;
       data_load_event_ex_o        <= 1'b0;
-      lsu_tosprw_ex_o             <= 3'b0;
-      lsu_tospra_ex_o             <= 2'b0;
+      atop_ex_o                   <= 5'b0;
 
       data_misaligned_ex_o        <= 1'b0;
+      stack_access_o              <= 1'b0;
 
       pc_ex_o                     <= '0;
 
@@ -1643,6 +1505,7 @@ module riscv_id_stage
         prepost_useincr_ex_o        <= prepost_useincr;
 
         data_misaligned_ex_o        <= 1'b1;
+        stack_access_o              <= 1'b0;
       end
     end else if (mult_multicycle_i) begin
       mult_operand_c_ex_o <= alu_operand_c;
@@ -1652,31 +1515,23 @@ module riscv_id_stage
 
       if (id_valid_o)
       begin // unstall the whole pipeline
-
-        alu_en_ex_o                 <= alu_en | branch_taken_ex;
-        if (alu_en | branch_taken_ex)
+        alu_en_ex_o                 <= alu_en;
+        if (alu_en)
         begin
-          //this prevents divisions or multicycle instructions to keep the EX stage busy
-          alu_operator_ex_o           <= branch_taken_ex ? ALU_SLTU : alu_operator;
-          if(~branch_taken_ex) begin
-            alu_operand_a_ex_o        <= alu_operand_a;
-            alu_operand_b_ex_o        <= alu_operand_b;
-            alu_operand_c_ex_o        <= alu_operand_c;
-            bmask_a_ex_o              <= bmask_a_id;
-            bmask_b_ex_o              <= bmask_b_id;
-            imm_vec_ext_ex_o          <= imm_vec_ext_id;
-            alu_vec_mode_ex_o         <= alu_vec_mode;
-
-            ivec_op_ex_o              <= ivec_op; //Added for ivec sb : updating pipeline            
-
-            alu_is_clpx_ex_o          <= is_clpx;
-            alu_clpx_shift_ex_o       <= instr[14:13];
-            alu_is_subrot_ex_o        <= is_subrot;
-          end
+          alu_operator_ex_o         <= alu_operator;
+          alu_operand_a_ex_o        <= alu_operand_a;
+          alu_operand_b_ex_o        <= alu_operand_b;
+          alu_operand_c_ex_o        <= alu_operand_c;
+          bmask_a_ex_o              <= bmask_a_id;
+          bmask_b_ex_o              <= bmask_b_id;
+          imm_vec_ext_ex_o          <= imm_vec_ext_id;
+          alu_vec_mode_ex_o         <= alu_vec_mode;
+          alu_is_clpx_ex_o          <= is_clpx;
+          alu_clpx_shift_ex_o       <= instr[14:13];
+          alu_is_subrot_ex_o        <= is_subrot;
         end
 
         mult_en_ex_o                <= mult_en;
-        dot_spr_operand_ex_o        <= dot_spr_operand;
         if (mult_int_en) begin
           mult_operator_ex_o        <= mult_operator;
           mult_sel_subword_ex_o     <= mult_sel_subword;
@@ -1687,43 +1542,14 @@ module riscv_id_stage
           mult_imm_ex_o             <= mult_imm_id;
         end
         if (mult_dot_en) begin
-
-          mult_dot_op_c_ex_o        <= alu_operand_c;
           mult_operator_ex_o        <= mult_operator;
           mult_dot_signed_ex_o      <= mult_dot_signed;
-
-          case(mult_operator) //added for ivec sb : clock gating for multipliers
-            MUL_DOT16, 
-            MIXED_MUL_8x16, 
-            MIXED_MUL_4x16, 
-            MIXED_MUL_2x16: begin
-              mult_dot_op_h_a_ex_o        <= alu_operand_a;
-              mult_dot_op_h_b_ex_o        <= alu_operand_b;              
-            end
-            MUL_DOT8, 
-            MIXED_MUL_2x8, 
-            MIXED_MUL_4x8: begin
-              mult_dot_op_b_a_ex_o        <= alu_operand_a;
-              mult_dot_op_b_b_ex_o        <= alu_operand_b;
-            end
-            MUL_DOT4,
-            MIXED_MUL_2x4: begin
-              mult_dot_op_n_a_ex_o        <= alu_operand_a;
-              mult_dot_op_n_b_ex_o        <= alu_operand_b;
-            end
-            MUL_DOT2: begin
-              mult_dot_op_c_a_ex_o        <= alu_operand_a;
-              mult_dot_op_c_b_ex_o        <= alu_operand_b;
-            end
-          endcase
-
-
+          mult_dot_op_a_ex_o        <= alu_operand_a;
+          mult_dot_op_b_ex_o        <= alu_operand_b;
+          mult_dot_op_c_ex_o        <= alu_operand_c;
           mult_is_clpx_ex_o         <= is_clpx;
           mult_clpx_shift_ex_o      <= instr[14:13];
-          if (is_clpx)
-            mult_clpx_img_ex_o      <= instr[25];
-          else
-            mult_clpx_img_ex_o      <= '0;
+          mult_clpx_img_ex_o        <= instr[25];
         end
 
         // APU pipeline
@@ -1745,7 +1571,6 @@ module riscv_id_stage
         regfile_alu_we_ex_o         <= regfile_alu_we_id;
         if (regfile_alu_we_id) begin
           regfile_alu_waddr_ex_o    <= regfile_alu_waddr_id;
-          regfile_alu_waddr2_ex_o   <= regfile_alu_waddr2_id; 
         end
 
         prepost_useincr_ex_o        <= prepost_useincr;
@@ -1753,12 +1578,6 @@ module riscv_id_stage
         csr_access_ex_o             <= csr_access;
         csr_op_ex_o                 <= csr_op;
 
-        write_sb_csr_q              <= write_sb_csr_n; //Aggiunta sb fpu: aggiorno il registro che mi serve per il forwarding
-        mux_sel_wcsr_ex_o           <= mux_sel_wcsr;   //Added for ivec sb : Used to write the next_cycle in the csr    
-        next_cycle_ex_o             <= next_cycle;     //Added for ivec sb : Value of the next cycle for mixedPrecision
-
-        lsu_tosprw_ex_o             <= lsu_tosprw_id;
-        lsu_tospra_ex_o             <= lsu_tospra_id;
         data_req_ex_o               <= data_req_id;
         if (data_req_id)
         begin // only needed for LSU when there is an active request
@@ -1767,11 +1586,13 @@ module riscv_id_stage
           data_sign_ext_ex_o        <= data_sign_ext_id;
           data_reg_offset_ex_o      <= data_reg_offset_id;
           data_load_event_ex_o      <= data_load_event_id;
+          atop_ex_o                 <= atop_id;
         end else begin
           data_load_event_ex_o      <= 1'b0;
         end
 
         data_misaligned_ex_o        <= 1'b0;
+        stack_access_o              <= stack_access;
 
         if ((jump_in_id == BRANCH_COND) || data_req_id) begin
           pc_ex_o                   <= pc_id_i;
@@ -1793,6 +1614,7 @@ module riscv_id_stage
         data_load_event_ex_o        <= 1'b0;
 
         data_misaligned_ex_o        <= 1'b0;
+        stack_access_o              <= stack_access;
 
         branch_in_ex_o              <= 1'b0;
 
@@ -1813,7 +1635,6 @@ module riscv_id_stage
     end
   end
 
-
   // stall control
   assign id_ready_o = ((~misaligned_stall) & (~jr_stall) & (~load_stall) & (~apu_stall) & (~csr_apu_stall) & ex_ready_i);
   assign id_valid_o = (~halt_id) & id_ready_o;
@@ -1825,10 +1646,25 @@ module riscv_id_stage
   `ifndef VERILATOR
     // make sure that branch decision is valid when jumping
     assert property (
-      @(posedge clk) (branch_in_ex_o) |-> (branch_decision_i !== 1'bx) ) else begin $display("%t, Branch decision is X in module %m", $time); $stop; end
+      @(posedge clk) (branch_in_ex_o) |-> (branch_decision_i !== 1'bx) ) else $error("Branch decision is X in module %m!");
 
     // the instruction delivered to the ID stage should always be valid
     assert property (
       @(posedge clk) (instr_valid_i & (~illegal_c_insn_i)) |-> (!$isunknown(instr_rdata_i)) ) else $display("Instruction is valid, but has at least one X");
+
+    // Check that instruction after taken branch is flushed (more should actually be flushed, but that is not checked here)
+    // and that EX stage is ready to receive flushed instruction immediately
+    property p_branch_taken_ex;
+      @(posedge clk) disable iff (!rst_n) (branch_taken_ex == 1'b1) |-> ((ex_ready_i == 1'b1) &&
+                                                                         (alu_en == 1'b0) && (apu_en == 1'b0) &&
+                                                                         (mult_en == 1'b0) && (mult_int_en == 1'b0) &&
+                                                                         (mult_dot_en == 1'b0) && (regfile_we_id == 1'b0) &&
+                                                                         (regfile_alu_we_id == 1'b0) && (data_req_id == 1'b0));
+    endproperty
+
+    a_branch_taken_ex : assert property(p_branch_taken_ex);
+
+    assert property (disable iff (!rst_n) @(posedge clk) (is_decoding_o |-> !illegal_insn_dec))
+      else $error("Illegal instruction 0x%h at PC 0x%h!", instr, pc_id_i);
   `endif
 endmodule

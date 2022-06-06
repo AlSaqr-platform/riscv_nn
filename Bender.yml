@@ -2,8 +2,8 @@ package:
   name: riscv
 
 dependencies:
-  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.3 }
-  fpnew: { git: "https://github.com/pulp-platform/fpnew.git", version: 0.6.5 }
+  fpnew: { git: "https://github.com/pulp-platform/fpnew.git", version: 0.6.1 }
+  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.1.1 }
 
 sources:
   include_dirs:
@@ -12,8 +12,7 @@ sources:
     - rtl/include/apu_core_package.sv
     - rtl/include/riscv_defines.sv
     - rtl/include/riscv_tracer_defines.sv
-    - rtl/macload_controller.sv
-    - rtl/mixed_precision_controller.sv
+    - rtl/register_file_test_wrap.sv
     - rtl/riscv_alu.sv
     - rtl/riscv_alu_basic.sv
     - rtl/riscv_alu_div.sv
@@ -25,28 +24,23 @@ sources:
     - rtl/riscv_ex_stage.sv
     - rtl/riscv_hwloop_controller.sv
     - rtl/riscv_hwloop_regs.sv
-    - rtl/register_file_test_wrap.sv
     - rtl/riscv_id_stage.sv
     - rtl/riscv_if_stage.sv
     - rtl/riscv_load_store_unit.sv
     - rtl/riscv_mult.sv
+    - rtl/riscv_pmp.sv
     - rtl/riscv_prefetch_buffer.sv
     - rtl/riscv_prefetch_L0_buffer.sv
     - rtl/riscv_core.sv
     - rtl/riscv_apu_disp.sv
     - rtl/riscv_fetch_fifo.sv
     - rtl/riscv_L0_buffer.sv
-    - rtl/riscv_pmp.sv
-
-    # Different register file implementations. By default, use the latch based
-    # register file (unless we target verilator or FPGAs).
-    - target: all(any(all(not(verilator), not(fpga)), cv32e40p_use_latch_regfile), not(cv32e40p_use_ff_regfile))
+    - target: asic
       files:
         - rtl/riscv_register_file_latch.sv
-    - target: all(any(verilator, fpga, cv32e40p_use_ff_regfile), not(cv32e40p_use_latch_regfile))
+    - target: not(asic)
       files:
         - rtl/riscv_register_file.sv
-
-    - target: all(any(test, cv32e40p_include_tracer), not(cv32e40p_exclude_tracer))
+    - target: rtl
       files:
         - rtl/riscv_tracer.sv

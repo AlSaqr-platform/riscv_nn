@@ -34,10 +34,7 @@
 
 `include "apu_macros.sv"
 
-import apu_core_package::*;
-import riscv_defines::*;
-
-module riscv_ex_stage
+module riscv_ex_stage import apu_core_package::*; import riscv_defines::*;
 #(
   parameter FPU              =  0,
   parameter FP_DIVSQRT       =  0,
@@ -50,147 +47,123 @@ module riscv_ex_stage
   parameter APU_NUSFLAGS_CPU =  5
 )
 (
-  input logic                            clk,
-  input logic                            rst_n,
+  input  logic        clk,
+  input  logic        rst_n,
 
   // ALU signals from ID stage
-  input logic [ALU_OP_WIDTH-1:0]         alu_operator_i,
-  input logic [31:0]                     alu_operand_a_i,
-  input logic [31:0]                     alu_operand_b_i,
-  input logic [31:0]                     alu_operand_c_i,
-  input logic                            alu_en_i,
-  input logic [ 4:0]                     bmask_a_i,
-  input logic [ 4:0]                     bmask_b_i,
-  input logic [ 1:0]                     imm_vec_ext_i,
-
-  input                                  ivec_mode_fmt alu_vec_mode_i, //modified for ivec sb : changed from logic to ivec_mode_fmt
-  input logic                            ivec_op_i, //added for ivec sb : needed inside alu to discriminate between scalar and vectorial operations
-
-  input logic                            alu_is_clpx_i,
-  input logic                            alu_is_subrot_i,
-  input logic [ 1:0]                     alu_clpx_shift_i,
+  input  logic [ALU_OP_WIDTH-1:0] alu_operator_i,
+  input  logic [31:0] alu_operand_a_i,
+  input  logic [31:0] alu_operand_b_i,
+  input  logic [31:0] alu_operand_c_i,
+  input  logic        alu_en_i,
+  input  logic [ 4:0] bmask_a_i,
+  input  logic [ 4:0] bmask_b_i,
+  input  logic [ 1:0] imm_vec_ext_i,
+  input  logic [ 1:0] alu_vec_mode_i,
+  input  logic        alu_is_clpx_i,
+  input  logic        alu_is_subrot_i,
+  input  logic [ 1:0] alu_clpx_shift_i,
 
   // Multiplier signals
-  input mult_op_type                     mult_operator_i, //Modified for ivec sb : changed from logic to mult_op_type
+  input  logic [ 2:0] mult_operator_i,
+  input  logic [31:0] mult_operand_a_i,
+  input  logic [31:0] mult_operand_b_i,
+  input  logic [31:0] mult_operand_c_i,
+  input  logic        mult_en_i,
+  input  logic        mult_sel_subword_i,
+  input  logic [ 1:0] mult_signed_mode_i,
+  input  logic [ 4:0] mult_imm_i,
 
-  input logic [31:0]                     mult_operand_a_i,
-  input logic [31:0]                     mult_operand_b_i,
-  input logic [31:0]                     mult_operand_c_i,
-  input logic                            mult_en_i,
-  input logic                            mult_sel_subword_i,
-  input logic [ 1:0]                     mult_signed_mode_i,
-  input logic [ 4:0]                     mult_imm_i,
+  input  logic [31:0] mult_dot_op_a_i,
+  input  logic [31:0] mult_dot_op_b_i,
+  input  logic [31:0] mult_dot_op_c_i,
+  input  logic [ 1:0] mult_dot_signed_i,
+  input  logic        mult_is_clpx_i,
+  input  logic [ 1:0] mult_clpx_shift_i,
+  input  logic        mult_clpx_img_i,
 
-  input logic [31:0]                     mult_dot_op_h_a_i,
-  input logic [31:0]                     mult_dot_op_h_b_i,
-  input logic [31:0]                     mult_dot_op_b_a_i,
-  input logic [31:0]                     mult_dot_op_b_b_i,
-  input logic [31:0]                     mult_dot_op_n_a_i,
-  input logic [31:0]                     mult_dot_op_n_b_i,
-  input logic [31:0]                     mult_dot_op_c_a_i,
-  input logic [31:0]                     mult_dot_op_c_b_i,
-  input logic [31:0]                     mult_dot_op_c_i,
-  input logic [ 1:0]                     mult_dot_signed_i,
-  input logic                            mult_is_clpx_i,
-  input logic [ 1:0]                     mult_clpx_shift_i,
-  input logic                            mult_clpx_img_i,
-  input logic                            dot_spr_operand_i,
-
-
-  input logic [NBITS_MIXED_CYCLES-1:0]   current_cycle_i, //added for ivec sb: used to know at which mixed multiplication position we currently are. 
-
-  output logic                           mult_multicycle_o,
+  output logic        mult_multicycle_o,
 
   // FPU signals
-  input logic [C_PC-1:0]                 fpu_prec_i,
-  output logic [C_FFLAG-1:0]             fpu_fflags_o,
-  output logic                           fpu_fflags_we_o,
+  input  logic [C_PC-1:0]             fpu_prec_i,
+  output logic [C_FFLAG-1:0]          fpu_fflags_o,
+  output logic                        fpu_fflags_we_o,
 
   // APU signals
-  input logic                            apu_en_i,
-  input logic [APU_WOP_CPU-1:0]          apu_op_i,
-  input logic [1:0]                      apu_lat_i,
-  input logic [APU_NARGS_CPU-1:0][31:0]  apu_operands_i,
-  input logic [5:0]                      apu_waddr_i,
-  input logic [APU_NDSFLAGS_CPU-1:0]     apu_flags_i,
+  input  logic                        apu_en_i,
+  input  logic [APU_WOP_CPU-1:0]      apu_op_i,
+  input  logic [1:0]                  apu_lat_i,
+  input  logic [APU_NARGS_CPU-1:0][31:0] apu_operands_i,
+  input  logic [5:0]                  apu_waddr_i,
+  input  logic [APU_NDSFLAGS_CPU-1:0] apu_flags_i,
 
-  input logic [2:0][5:0]                 apu_read_regs_i,
-  input logic [2:0]                      apu_read_regs_valid_i,
-  output logic                           apu_read_dep_o,
-  input logic [1:0][5:0]                 apu_write_regs_i,
-  input logic [1:0]                      apu_write_regs_valid_i,
-  output logic                           apu_write_dep_o,
+  input  logic [2:0][5:0]             apu_read_regs_i,
+  input  logic [2:0]                  apu_read_regs_valid_i,
+  output logic                        apu_read_dep_o,
+  input  logic [1:0][5:0]             apu_write_regs_i,
+  input  logic [1:0]                  apu_write_regs_valid_i,
+  output logic                        apu_write_dep_o,
 
-  output logic                           apu_perf_type_o,
-  output logic                           apu_perf_cont_o,
-  output logic                           apu_perf_wb_o,
+  output logic                        apu_perf_type_o,
+  output logic                        apu_perf_cont_o,
+  output logic                        apu_perf_wb_o,
 
-  output logic                           apu_busy_o,
-  output logic                           apu_ready_wb_o,
+  output logic                        apu_busy_o,
+  output logic                        apu_ready_wb_o,
 
   // apu-interconnect
   // handshake signals
-  output logic                           apu_master_req_o,
-  output logic                           apu_master_ready_o,
-  input logic                            apu_master_gnt_i,
+  output logic                       apu_master_req_o,
+  output logic                       apu_master_ready_o,
+  input logic                        apu_master_gnt_i,
   // request channel
   output logic [APU_NARGS_CPU-1:0][31:0] apu_master_operands_o,
-  output logic [APU_WOP_CPU-1:0]         apu_master_op_o,
+  output logic [APU_WOP_CPU-1:0]     apu_master_op_o,
   // response channel
-  input logic                            apu_master_valid_i,
-  input logic [31:0]                     apu_master_result_i,
+  input logic                        apu_master_valid_i,
+  input logic [31:0]                 apu_master_result_i,
 
-  input logic                            lsu_en_i,
-  input logic [31:0]                     lsu_rdata_i,
-  input logic [2:0]                      lsu_tosprw_ex_i,
-  input logic [1:0]                      lsu_tospra_ex_i,
-  input logic                            data_rvalid_ex_i,
-
-  // RNN Extension
-  output logic                           computeLoadVLIW_ex_o,
+  input  logic        lsu_en_i,
+  input  logic [31:0] lsu_rdata_i,
 
   // input from ID stage
-  input logic                            branch_in_ex_i,
-  input logic [5:0]                      regfile_alu_waddr_i,
-  input logic [5:0]                      regfile_alu_waddr2_i,
-  input logic                            regfile_alu_we_i,
+  input  logic        branch_in_ex_i,
+  input  logic [5:0]  regfile_alu_waddr_i,
+  input  logic        regfile_alu_we_i,
 
   // directly passed through to WB stage, not used in EX
-  input logic                            regfile_we_i,
-  input logic [5:0]                      regfile_waddr_i,
+  input  logic        regfile_we_i,
+  input  logic [5:0]  regfile_waddr_i,
 
   // CSR access
-  input logic                            csr_access_i,
-  input logic [31:0]                     csr_rdata_i,
+  input  logic        csr_access_i,
+  input  logic [31:0] csr_rdata_i,
 
   // Output of EX stage pipeline
-  output logic [5:0]                     regfile_waddr_wb_o,
-  output logic                           regfile_we_wb_o,
-  output logic [31:0]                    regfile_wdata_wb_o,
+  output logic [5:0]  regfile_waddr_wb_o,
+  output logic        regfile_we_wb_o,
+  output logic [31:0] regfile_wdata_wb_o,
 
   // Forwarding ports : to ID stage
-  output logic [5:0]                     regfile_alu_waddr_fw_o,
-  output logic                           regfile_alu_we_fw_o,
-  output logic [31:0]                    regfile_alu_wdata_fw_o, // forward to RF and ID/EX pipe, ALU & MUL
+  output logic  [5:0] regfile_alu_waddr_fw_o,
+  output logic        regfile_alu_we_fw_o,
+  output logic [31:0] regfile_alu_wdata_fw_o,    // forward to RF and ID/EX pipe, ALU & MUL
 
   // To IF: Jump and branch target and decision
-  output logic [31:0]                    jump_target_o,
-  output logic                           branch_decision_o,
+  output logic [31:0] jump_target_o,
+  output logic        branch_decision_o,
 
   // Stall Control
-  input logic                            is_decoding_i, // Used to mask data Dependency inside the APU dispatcher in case of an istruction non valid
-  input logic                            lsu_ready_ex_i, // EX part of LSU is done
-  input logic                            lsu_err_i,
+  input  logic        lsu_ready_ex_i, // EX part of LSU is done
+  input  logic        lsu_err_i,
 
-  output logic                           ex_ready_o, // EX stage ready for new data
-  output logic                           ex_valid_o, // EX stage gets new data
-  input logic                            wb_ready_i  // WB stage ready for new data
+  output logic        ex_ready_o, // EX stage ready for new data
+  output logic        ex_valid_o, // EX stage gets new data
+  input  logic        wb_ready_i  // WB stage ready for new data
 );
 
   logic [31:0]    alu_result;
   logic [31:0]    mult_result;
-  logic [31:0]    mult_result_p;  //RNN_EXT
-  logic [31:0]    mult_result_n;  //RNN_EXT
   logic           alu_cmp_result;
 
   logic           regfile_we_lsu;
@@ -217,26 +190,6 @@ module riscv_ex_stage
   logic           apu_ready;
   logic           apu_gnt;
 
-  // RNN Extensions   //RNN_EXT
-  logic           spr_rnn_en;  //RNN_EXT
-  logic [3:0][31:0] wspr_rnn, wspr_rnn_n;  //RNN_EXT
-  logic [1:0][31:0] aspr_rnn, aspr_rnn_n;  //RNN_EXT
-  logic [2:0]     lsu_tosprw_wb;  //RNN_EXT
-  logic [1:0]     lsu_tospra_wb;  //RNN_EXT
-  logic           dot_spr_operand_wb;
-  logic [5:0]     regfile_alu_waddr2_wb;  //RNN_EXT
-  logic [31:0]    mult_dot_op_h_a_ml; //RNN_EXT
-  logic [31:0]    mult_dot_op_b_a_ml;  //RNN_EXT
-  logic [31:0]    mult_dot_op_n_a_ml; //RNN_EXT
-  logic [31:0]    mult_dot_op_c_a_ml; //RNN_EXT
-  logic [31:0]    mult_dot_op_h_b_ml; //RNN_EXT
-  logic [31:0]    mult_dot_op_b_b_ml;  //RNN_EXT
-  logic [31:0]    mult_dot_op_n_b_ml; //RNN_EXT
-  logic [31:0]    mult_dot_op_c_b_ml; //RNN_EXT
-  logic           loadComputeVLIW;  //RNN_EXT
-
-  assign loadComputeVLIW = dot_spr_operand_i & mult_en_i; //alu_en_i & mult_en_i;
-  assign computeLoadVLIW_ex_o = loadComputeVLIW;
   // ALU write port mux
   always_comb
   begin
@@ -257,24 +210,18 @@ module riscv_ex_stage
     end else begin
       regfile_alu_we_fw_o      = regfile_alu_we_i & ~apu_en_i; // private fpu incomplete?
       regfile_alu_waddr_fw_o   = regfile_alu_waddr_i;
-      if (loadComputeVLIW) begin
+      if (alu_en_i)
         regfile_alu_wdata_fw_o = alu_result;
-      end else begin
-        if (alu_en_i)
-          regfile_alu_wdata_fw_o = alu_result;
-        if (mult_en_i)
-          regfile_alu_wdata_fw_o = mult_result;
-        if (csr_access_i)
-          regfile_alu_wdata_fw_o = csr_rdata_i;
-      end
+      if (mult_en_i)
+        regfile_alu_wdata_fw_o = mult_result;
+      if (csr_access_i)
+        regfile_alu_wdata_fw_o = csr_rdata_i;
     end
   end
 
-  assign mult_result_n = mult_result; //RNN_EXT
   // LSU write port mux
   always_comb
   begin
-    spr_rnn_en = 1'b0;  //RNN_EXT
     regfile_we_wb_o    = 1'b0;
     regfile_waddr_wb_o = regfile_waddr_lsu;
     regfile_wdata_wb_o = lsu_rdata_i;
@@ -285,28 +232,13 @@ module riscv_ex_stage
       if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
          wb_contention_lsu = 1'b1;
 //         $error("%t, wb-contention", $time);
-      // APU two-cycle operations are written back on LSU port
       end
-      if(lsu_tosprw_wb[0] | lsu_tospra_wb[0]) begin// does not work because of latency
-          spr_rnn_en = 1'b1;       //spr instead of gpr
-          //regfile_waddr_wb_o = regfile_waddr_lsu; 
-          //regfile_wdata_wb_o = mult_result_p;
-          // regfile_we_wb_o = 1'b0;  //spr instead of gpr
-          // regfile_waddr_wb_o = regfile_alu_waddr2_wb;
-      end
+    // APU two-cycle operations are written back on LSU port
     end else if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
-          regfile_we_wb_o    = 1'b1;
-          regfile_waddr_wb_o = apu_waddr;
-          regfile_wdata_wb_o = apu_result;
-      end
-    //if(lsu_tosprw_wb[0]) begin
-    if (dot_spr_operand_wb) begin
-      regfile_waddr_wb_o = regfile_waddr_lsu; 
-      regfile_wdata_wb_o = mult_result_p;
+      regfile_we_wb_o    = 1'b1;
+      regfile_waddr_wb_o = apu_waddr;
+      regfile_wdata_wb_o = apu_result;
     end
-
-  
-
   end
 
   // branch handling
@@ -339,9 +271,6 @@ module riscv_ex_stage
     .operand_c_i         ( alu_operand_c_i ),
 
     .vector_mode_i       ( alu_vec_mode_i  ),
-
-    .ivec_op_i           ( ivec_op_i       ), //added for sb ivec
-
     .bmask_a_i           ( bmask_a_i       ),
     .bmask_b_i           ( bmask_b_i       ),
     .imm_vec_ext_i       ( imm_vec_ext_i   ),
@@ -367,36 +296,6 @@ module riscv_ex_stage
   //                                                            //
   ////////////////////////////////////////////////////////////////
 
-
-  assign mult_dot_op_h_a_ml = {32{(mult_operator_i == MUL_DOT16)        |   
-                                  (mult_operator_i == MIXED_MUL_8x16)   |   
-                                  (mult_operator_i == MIXED_MUL_4x16)   |                                    
-                                  (mult_operator_i == MIXED_MUL_2x16)}} &   
-                              (dot_spr_operand_i ? aspr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_h_a_i);
-  assign mult_dot_op_b_a_ml = {32{(mult_operator_i == MUL_DOT8)        |   
-                                  (mult_operator_i == MIXED_MUL_2x8)   |   
-                                  (mult_operator_i == MIXED_MUL_4x8)}} &   
-                              (dot_spr_operand_i ? aspr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_b_a_i);
-  assign mult_dot_op_n_a_ml = {32{(mult_operator_i == MUL_DOT4)        | 
-                                  (mult_operator_i == MIXED_MUL_2x4)}} & 
-                              (dot_spr_operand_i ? aspr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_n_a_i);
-  assign mult_dot_op_c_a_ml = {32{(mult_operator_i == MUL_DOT2)}}  & ((dot_spr_operand_i) ? aspr_rnn[lsu_tospra_ex_i[1]] : mult_dot_op_c_a_i);
-  assign mult_dot_op_h_b_ml = {32{(mult_operator_i == MUL_DOT16)      |   
-                                  (mult_operator_i == MIXED_MUL_8x16)   |   
-                                  (mult_operator_i == MIXED_MUL_4x16)   |                                    
-                                  (mult_operator_i == MIXED_MUL_2x16)}} &   
-                              (dot_spr_operand_i ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_h_b_i);
-  assign mult_dot_op_b_b_ml = {32{(mult_operator_i == MUL_DOT8)        |   
-                                  (mult_operator_i == MIXED_MUL_2x8)   |   
-                                  (mult_operator_i == MIXED_MUL_4x8)}} &   
-                              (dot_spr_operand_i ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_b_b_i);
-  assign mult_dot_op_n_b_ml = {32{(mult_operator_i == MUL_DOT4)        | 
-                                  (mult_operator_i == MIXED_MUL_2x4)}} & 
-                              (dot_spr_operand_i ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_n_b_i);
-  assign mult_dot_op_c_b_ml = {32{(mult_operator_i == MUL_DOT2)}}  & 
-                              (dot_spr_operand_i ? wspr_rnn[lsu_tosprw_ex_i[2:1]] : mult_dot_op_c_b_i);
-
-   
   riscv_mult
   #(
     .SHARED_DSP_MULT(SHARED_DSP_MULT)
@@ -417,19 +316,10 @@ module riscv_ex_stage
     .op_c_i          ( mult_operand_c_i     ),
     .imm_i           ( mult_imm_i           ),
 
-    .dot_op_h_a_i      ( mult_dot_op_h_a_ml     ),
-    .dot_op_h_b_i      ( mult_dot_op_h_b_ml     ),
-    .dot_op_b_a_i      ( mult_dot_op_b_a_ml     ),
-    .dot_op_b_b_i      ( mult_dot_op_b_b_ml     ),
-    .dot_op_n_a_i      ( mult_dot_op_n_a_ml     ),
-    .dot_op_n_b_i      ( mult_dot_op_n_b_ml     ),
-    .dot_op_c_a_i      ( mult_dot_op_c_a_ml     ),
-    .dot_op_c_b_i      ( mult_dot_op_c_b_ml     ),
+    .dot_op_a_i      ( mult_dot_op_a_i      ),
+    .dot_op_b_i      ( mult_dot_op_b_i      ),
     .dot_op_c_i      ( mult_dot_op_c_i      ),
     .dot_signed_i    ( mult_dot_signed_i    ),
-
-   .current_cycle_i ( current_cycle_i      ),
-
     .is_clpx_i       ( mult_is_clpx_i       ),
     .clpx_shift_i    ( mult_clpx_shift_i    ),
     .clpx_img_i      ( mult_clpx_img_i      ),
@@ -468,7 +358,6 @@ module riscv_ex_stage
          .active_o           ( apu_active                     ),
          .stall_o            ( apu_stall                      ),
 
-         .is_decoding_i      ( is_decoding_i                  ),
          .read_regs_i        ( apu_read_regs_i                ),
          .read_regs_valid_i  ( apu_read_regs_valid_i          ),
          .read_dep_o         ( apu_read_dep_o                 ),
@@ -526,7 +415,7 @@ module riscv_ex_stage
            assign {fpu_vec_op, fpu_op_mod, fpu_op} = apu_op_i;
            assign {fpu_int_fmt, fpu_src_fmt, fpu_dst_fmt, fp_rnd_mode} = apu_flags_i;
 
-           localparam C_DIV = FP_DIVSQRT ? fpnew_pkg::MERGED : fpnew_pkg::DISABLED;
+           localparam fpnew_pkg::unit_type_t C_DIV = FP_DIVSQRT ? fpnew_pkg::MERGED : fpnew_pkg::DISABLED;
 
            logic FPU_ready_int;
 
@@ -549,11 +438,11 @@ module riscv_ex_stage
                          '{default: C_LAT_DIVSQRT}, // DIVSQRT
                          '{default: C_LAT_NONCOMP}, // NONCOMP
                          '{default: C_LAT_CONV}},   // CONV
-            UnitTypes: '{'{default: fpnew_pkg::MERGED}, // ADDMUL
+            UnitTypes: '{'{default: fpnew_pkg::PARALLEL}, // ADDMUL
                          '{default: C_DIV},               // DIVSQRT
                          '{default: fpnew_pkg::PARALLEL}, // NONCOMP
                          '{default: fpnew_pkg::MERGED}},  // CONV
-            PipeConfig: fpnew_pkg::AFTER
+            PipeConfig: fpnew_pkg::DISTRIBUTED
           };
 
           //---------------
@@ -632,32 +521,6 @@ module riscv_ex_stage
 
    assign apu_busy_o = apu_active;
 
-  // SPR
-  assign wspr_rnn_n[0] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b00) ? lsu_rdata_i : wspr_rnn[0]; //RNN_EXT
-  assign wspr_rnn_n[1] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b01) ? lsu_rdata_i : wspr_rnn[1]; //RNN_EXT
-  assign wspr_rnn_n[2] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b10) ? lsu_rdata_i : wspr_rnn[2]; //RNN_EXT
-  assign wspr_rnn_n[3] = (lsu_tosprw_wb[0] && spr_rnn_en && lsu_tosprw_wb[2:1]==2'b11) ? lsu_rdata_i : wspr_rnn[3]; //RNN_EXT
-  assign aspr_rnn_n[0] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b0)    ? lsu_rdata_i : aspr_rnn[0]; //RNN_EXT
-  assign aspr_rnn_n[1] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b1)    ? lsu_rdata_i : aspr_rnn[1]; //RNN_EXT
-
-always_ff @(posedge clk, negedge rst_n)
-  begin : SPR
-    if (~rst_n)
-    begin
-      wspr_rnn   <= '0;
-      aspr_rnn   <= '0;
-      mult_result_p <= '0; //RNN_EXT
-    end
-    else
-    begin
-        wspr_rnn      <= wspr_rnn_n;
-        aspr_rnn      <= aspr_rnn_n;
-        mult_result_p <= mult_result_n; //RNN_EXT
-    end
-  end
-
-
-
   ///////////////////////////////////////
   // EX/WB Pipeline Register           //
   ///////////////////////////////////////
@@ -667,20 +530,12 @@ always_ff @(posedge clk, negedge rst_n)
     begin
       regfile_waddr_lsu   <= '0;
       regfile_we_lsu      <= 1'b0;
-      lsu_tosprw_wb        <= 3'b0;  //RNN_EXT
-      lsu_tospra_wb        <= 2'b0;
-      regfile_alu_waddr2_wb <= 'b0;  //RNN_EXT
-      dot_spr_operand_wb  <= '0;
     end
     else
     begin
       if (ex_valid_o) // wb_ready_i is implied
       begin
         regfile_we_lsu    <= regfile_we_i & ~lsu_err_i;
-        lsu_tosprw_wb <= lsu_tosprw_ex_i; //RNN_EXT//RNN_EXT
-        lsu_tospra_wb <= lsu_tospra_ex_i;//RNN_EXT
-        dot_spr_operand_wb <= dot_spr_operand_i;
-        regfile_alu_waddr2_wb <= regfile_alu_waddr2_i; //RNN_EXT
         if (regfile_we_i & ~lsu_err_i ) begin
           regfile_waddr_lsu <= regfile_waddr_i;
         end
