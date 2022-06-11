@@ -285,15 +285,15 @@ module riscv_load_store_unit (
     end
   end
 
-  `ifndef TARGET_SYNTHESIS
-    always_comb begin
-      if (rst_ni && data_req_o && stack_access_i) begin
-        assert final (data_addr_o > stack_limit_i && data_addr_o <= stack_base_i)
-          else $error("Stack pointer used to access 0x%08x outside stack (0x%08x, 0x%08x]!",
-              data_addr_o, stack_limit_i, stack_base_i);
-      end
-    end
-  `endif
+  // `ifndef TARGET_SYNTHESIS
+  //   always_comb begin
+  //     if (rst_ni && data_req_o && stack_access_i) begin
+  //       assert final (data_addr_o > stack_limit_i && data_addr_o <= stack_base_i)
+  //         else $error("Stack pointer used to access 0x%08x outside stack (0x%08x, 0x%08x]!",
+  //             data_addr_o, stack_limit_i, stack_base_i);
+  //     end
+  //   end
+  // `endif
 
   assign busy_o = (state_q == WaitRValid) || (state_q == WaitRValidExStall)
       || (state_q == IdleExStall) || (data_req_o);
