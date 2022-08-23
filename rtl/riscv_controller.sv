@@ -86,6 +86,8 @@ module riscv_controller
   output logic        data_err_ack_o,
 
   input logic         computeLoadVLIW_i,         // RNN_EXT
+  input logic         macload_update_ex_i,
+  input logic         same_rnn_id_i,
 
   // from ALU
   input  logic        mult_multicycle_i,          // multiplier is taken multiple cycles and uses op c as storage
@@ -1003,11 +1005,18 @@ module riscv_controller
 
     // Stall because of load operation
     if (
-          ( (data_req_ex_i == 1'b1) && (regfile_we_ex_i == 1'b1) ||
-           (wb_ready_i == 1'b0) && (regfile_we_wb_i == 1'b1)
-          ) &&
-          ( ((reg_d_ex_is_reg_a_i == 1'b1) || (reg_d_ex_is_reg_b_i == 1'b1) || (reg_d_ex_is_reg_c_i == 1'b1) ||
-            (is_decoding_o && regfile_we_id_i && (regfile_waddr_ex_i == regfile_alu_waddr_id_i))) && (computeLoadVLIW_i == 1'b0)) // TODO stall control for RNN_EXT 
+          (
+            ( (data_req_ex_i == 1'b1) && (regfile_we_ex_i == 1'b1) ||
+              (wb_ready_i == 1'b0) && (regfile_we_wb_i == 1'b1)
+            ) &&
+            ( ((reg_d_ex_is_reg_a_i == 1'b1) || (reg_d_ex_is_reg_b_i == 1'b1) || (reg_d_ex_is_reg_c_i == 1'b1) ||
+              (is_decoding_o && regfile_we_id_i && (regfile_waddr_ex_i == regfile_alu_waddr_id_i))) && (computeLoadVLIW_i == 1'b0)
+            )
+          ) ||
+          (
+            //( (data_req_ex_i == 1'b1) && (macload_update_ex_i == 1'b1) && (same_rnn_id_i) ) //stall for RNN
+            ( (data_req_ex_i == 1'b1) && (macload_update_ex_i == 1'b1) && (same_rnn_id_i) )
+          )
        )
     begin
       deassert_we_o   = 1'b1;

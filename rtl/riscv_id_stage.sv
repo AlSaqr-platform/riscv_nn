@@ -311,6 +311,8 @@ module riscv_id_stage
   logic        hwloop_mask;
   logic        halt_id;
 
+  logic        macload_update_ex;
+  logic        same_rnn_id;
 
   // Immediate decoding and sign extension
   logic [31:0] imm_i_type;
@@ -1236,6 +1238,27 @@ module riscv_id_stage
 
   );
 
+  // Generation of signals for stall control in case of MACLOAD instruction
+  assign macload_update_ex = lsu_tospra_ex_o[0] || lsu_tosprw_ex_o[0];
+
+  always_comb
+    begin
+      same_rnn_id = 1'b0;
+
+      if (  (( 
+              (lsu_tospra_ex_o[0] == 1'b1) && (lsu_tospra_id[1] == lsu_tospra_ex_o[1]) 
+             ) ||
+             (
+              (lsu_tosprw_ex_o[0] == 1'b1) && (lsu_tosprw_id[2:1] == lsu_tosprw_ex_o[2:1])
+              )
+            ) &&
+            (instr_rdata_i[11:7] != 5'h00)
+         )
+        begin
+          same_rnn_id = 1'b1;
+        end
+    end
+
   ////////////////////////////////////////////////////////////////////
   //    ____ ___  _   _ _____ ____   ___  _     _     _____ ____    //
   //   / ___/ _ \| \ | |_   _|  _ \ / _ \| |   | |   | ____|  _ \   //
@@ -1397,7 +1420,9 @@ module riscv_id_stage
     .wb_ready_i                     ( wb_ready_i             ),
 
 
-    .computeLoadVLIW_i              (loadComputeVLIW_ex_i),
+    .computeLoadVLIW_i              ( loadComputeVLIW_ex_i   ),
+    .macload_update_ex_i            ( macload_update_ex      ),
+    .same_rnn_id_i                  ( same_rnn_id            ),
 
 
     // Performance Counters
