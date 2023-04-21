@@ -1368,7 +1368,7 @@ end //PULP_SECURE
 
         fpu_dst_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
         fpu_src_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
-        fpu_int_fmt_q     <= fpnew_pkg::INT32; //aggiunta sb fpu
+        fpu_int_fmt_q  <= fpnew_pkg::INT32; //aggiunta sb fpu
 
       end
       mstatus_q  <= '{
@@ -1402,56 +1402,70 @@ end //PULP_SECURE
       macl_w_rollback_q <= '0;
       macl_a_skip_q     <= '0;
       macl_w_skip_q     <= '0;
-      
-
     end
     else
     begin
-      // update CSRs
-      if(FPU == 1) begin
-        frm_q      <= frm_n;
-        fflags_q   <= fflags_n;
-        fprec_q    <= fprec_n;
+      // update CSRs  
+      //mcause_q   <= mcause_n  ;
+          
+      if(csr_we_int) begin
+        if(FPU == 1) begin
+          frm_q      <= frm_n;
+          fflags_q   <= fflags_n;
+          fprec_q    <= fprec_n;
 
-        fpu_dst_fmt_q  <= fpu_dst_fmt_n;  //aggiunta sb fpu
-        fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
-        fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
+          fpu_dst_fmt_q  <= fpu_dst_fmt_n;  //aggiunta sb fpu
+          fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
+          fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
+        end
+        if (PULP_SECURE == 1) begin
+            mstatus_q      <= mstatus_n ;
+        end else begin
+            mstatus_q  <= '{
+                    uie:  1'b0,
+                    mie:  mstatus_n.mie,
+                    upie: 1'b0,
+                    mpie: mstatus_n.mpie,
+                    mpp:  PRIV_LVL_M,
+                    mprv: 1'b0
+                };
+        end
 
+        // it doesn't work with mepc gated
+
+        //mepc_q     <= mepc_n    ;
+        mcause_q   <= mcause_n  ;
+
+        // here it works
+
+        depc_q     <= depc_n    ;
+        dcsr_q     <= dcsr_n;
+        dscratch0_q<= dscratch0_n;
+        dscratch1_q<= dscratch1_n;
+        mscratch_q <= mscratch_n;
+
+        ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
+        ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
+        ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
+        sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
+        
+        //macl_a_address_q  <= macl_a_address_n;
+        //macl_w_address_q  <= macl_w_address_n;
+        macl_a_stride_q   <= macl_a_stride_n;
+        macl_w_stride_q   <= macl_w_stride_n;
+        macl_a_rollback_q <= macl_a_rollback_n;
+        macl_w_rollback_q <= macl_w_rollback_n;
+        macl_a_skip_q     <= macl_a_skip_n;
+        macl_w_skip_q     <= macl_w_skip_n;
       end
-      if (PULP_SECURE == 1) begin
-        mstatus_q      <= mstatus_n ;
-      end else begin
-        mstatus_q  <= '{
-                uie:  1'b0,
-                mie:  mstatus_n.mie,
-                upie: 1'b0,
-                mpie: mstatus_n.mpie,
-                mpp:  PRIV_LVL_M,
-                mprv: 1'b0
-              };
-      end
+
+      if(csr_we_int || csr_macl_we_int)
+        begin          
+          macl_a_address_q  <= macl_a_address_n;
+          macl_w_address_q  <= macl_w_address_n;
+        end
+
       mepc_q     <= mepc_n    ;
-      mcause_q   <= mcause_n  ;
-
-      depc_q     <= depc_n    ;
-      dcsr_q     <= dcsr_n;
-      dscratch0_q<= dscratch0_n;
-      dscratch1_q<= dscratch1_n;
-      mscratch_q <= mscratch_n;
-
-      ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
-      ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
-      ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
-      sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
-      
-      macl_a_address_q  <= macl_a_address_n;
-      macl_w_address_q  <= macl_w_address_n;
-      macl_a_stride_q   <= macl_a_stride_n;
-      macl_w_stride_q   <= macl_w_stride_n;
-      macl_a_rollback_q <= macl_a_rollback_n;
-      macl_w_rollback_q <= macl_w_rollback_n;
-      macl_a_skip_q     <= macl_a_skip_n;
-      macl_w_skip_q     <= macl_w_skip_n;
 
     end
   end
@@ -1640,4 +1654,3 @@ end //PULP_SECURE
   end
 
 endmodule
-
