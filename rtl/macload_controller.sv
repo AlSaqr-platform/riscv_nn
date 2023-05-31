@@ -4,6 +4,7 @@ import riscv_defines::*;
 module macload_controller(
 	input logic         clk_i,
 	input logic         rstn_i,
+  input logic         setback_i,
 	input logic         update_a_i, //from ID
 	input logic         update_w_i, //from ID
   input logic         id_valid_i, //fromID        
@@ -21,7 +22,7 @@ module macload_controller(
 	output logic [31:0] updated_address_o,//to CSR
 	output logic [1:0]  csr_op_o, //to CSR
 	output logic [11:0] csr_address_o	  //to CSR
-	);
+);
 
 logic update_a_int, update_w_int;
 logic [31:0] a_count_n, a_count_q, w_count_n, w_count_q;
@@ -36,7 +37,9 @@ always_ff @(posedge clk_i, negedge rstn_i) begin
 	if(~rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
 		a_count_q <= '0;
 	else begin
-		if(~csr_a_rstn_i)
+		if (setback_i)
+      a_count_q <= '0;
+    if(~csr_a_rstn_i)
 			a_count_q <= '0;
 		else if((a_count_q == a_skip_i) & update_a_int) // resetting if we reached the number of updates before rollback
 			a_count_q <= '0;
@@ -54,6 +57,8 @@ always_ff @(posedge clk_i, negedge rstn_i) begin
 	if(~rstn_i) //resetting if rstn_i == 0 or the address has been updated by the C code in the CSR
 		w_count_q <= '0;
 	else begin
+    if (setback_i)
+      w_count_q <= '0;
 		if(~csr_w_rstn_i)
 			w_count_q <= '0;
 		else if((w_count_q == w_skip_i) & update_w_int) // resetting if we reached the number of updates before rollback

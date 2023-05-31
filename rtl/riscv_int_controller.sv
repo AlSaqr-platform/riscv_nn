@@ -30,6 +30,7 @@ module riscv_int_controller
 (
   input  logic        clk,
   input  logic        rst_n,
+  input  logic        setback_i,
 
   // irq_req for controller
   output logic        irq_req_ctrl_o,
@@ -69,13 +70,15 @@ else
   always_ff @(posedge clk, negedge rst_n)
   begin
     if (rst_n == 1'b0) begin
-
       irq_id_q    <= '0;
       irq_sec_q   <= 1'b0;
       exc_ctrl_cs <= IDLE;
-
     end else begin
-
+      if (setback_i) begin
+        irq_id_q    <= '0;
+        irq_sec_q   <= 1'b0;
+        exc_ctrl_cs <= IDLE;
+      end else begin
       unique case (exc_ctrl_cs)
 
         IDLE:
@@ -106,7 +109,7 @@ else
         end
 
       endcase
-
+      end
     end
   end
 

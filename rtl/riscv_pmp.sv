@@ -110,6 +110,7 @@ module riscv_pmp
 (
    input logic                             clk,
    input logic                             rst_n,
+   input logic                             setback_i,
 
    input PrivLvl_t                         pmp_privil_mode_i,
 
@@ -693,11 +694,14 @@ module riscv_pmp
 
 
    always_ff @(posedge clk or negedge rst_n) begin
-      if(~rst_n) begin
-          data_err_state_q <= IDLE;
-      end else begin
-          data_err_state_q <= data_err_state_n;
-      end
+     if(~rst_n) begin
+       data_err_state_q <= IDLE;
+     end else begin
+       if (setback_i)
+         data_err_state_q <= IDLE;
+       else
+         data_err_state_q <= data_err_state_n;
+     end
    end
 
 

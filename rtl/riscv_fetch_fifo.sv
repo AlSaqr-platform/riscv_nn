@@ -26,6 +26,7 @@ module riscv_fetch_fifo
 (
     input  logic        clk,
     input  logic        rst_n,
+    input  logic        setback_i,
 
     // control signals
     input  logic        clear_i,          // clears the contents of the fifo
@@ -237,27 +238,30 @@ module riscv_fetch_fifo
   // registers
   //////////////////////////////////////////////////////////////////////////////
 
-  always_ff @(posedge clk, negedge rst_n)
-  begin
-    if(rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(rst_n == 1'b0) begin
       addr_Q    <= '{default: '0};
       rdata_Q   <= '{default: '0};
       valid_Q   <= '0;
       is_hwlp_Q <= '0;
-    end
-    else
-    begin
-      // on a clear signal from outside we invalidate the content of the FIFO
-      // completely and start from an empty state
-      if (clear_i) begin
-        valid_Q    <= '0;
-        is_hwlp_Q  <= '0;
+    end else begin
+      if(setback_i) begin
+        addr_Q    <= '{default: '0};
+        rdata_Q   <= '{default: '0};
+        valid_Q   <= '0;
+        is_hwlp_Q <= '0;
       end else begin
-        addr_Q    <= addr_n;
-        rdata_Q   <= rdata_n;
-        valid_Q   <= valid_n;
-        is_hwlp_Q <= is_hwlp_n;
+        // on a clear signal from outside we invalidate the content of the FIFO
+        // completely and start from an empty state
+        if (clear_i) begin
+          valid_Q    <= '0;
+          is_hwlp_Q  <= '0;
+        end else begin
+          addr_Q    <= addr_n;
+          rdata_Q   <= rdata_n;
+          valid_Q   <= valid_n;
+          is_hwlp_Q <= is_hwlp_n;
+        end
       end
     end
   end

@@ -61,6 +61,7 @@ module riscv_id_stage
 (
     input logic                            clk,
     input logic                            rst_n,
+    input logic                            setback_i,
 
     input logic                            test_en_i,
     input logic                            fregfile_disable_i,
@@ -1053,6 +1054,7 @@ module riscv_id_stage
   (
     .clk                ( clk                ),
     .rst_n              ( rst_n              ),
+    .setback_i          ( setback_i          ),
 
     .test_en_i          ( test_en_i          ),
 
@@ -1276,6 +1278,7 @@ module riscv_id_stage
   (
     .clk                            ( clk                    ),
     .rst_n                          ( rst_n                  ),
+    .setback_i                      ( setback_i              ),
 
     .fetch_enable_i                 ( fetch_enable_i         ),
     .ctrl_busy_o                    ( ctrl_busy_o            ),
@@ -1451,6 +1454,7 @@ module riscv_id_stage
   (
     .clk                  ( clk                ),
     .rst_n                ( rst_n              ),
+    .setback_i            ( setback_i          ),
 
     // to controller
     .irq_req_ctrl_o       ( irq_req_ctrl       ),
@@ -1489,6 +1493,7 @@ module riscv_id_stage
   (
     .clk                   ( clk                       ),
     .rst_n                 ( rst_n                     ),
+    .setback_i             ( setback_i                 ),
 
     // from ID
     .hwlp_start_data_i     ( hwloop_start              ),
@@ -1529,6 +1534,7 @@ module riscv_id_stage
      (
       .clk             ( clk              ),
       .rst_n           ( rst_n            ),
+      .setback_i       ( setback_i        ),
       .illegal_insn_i  ( illegal_insn_dec ),
       .id_valid_i      ( id_valid_o       ),
       .is_decoding_i   ( is_decoding_o    ),
@@ -1564,10 +1570,8 @@ module riscv_id_stage
   //                                                                             //
   /////////////////////////////////////////////////////////////////////////////////
 
-  always_ff @(posedge clk, negedge rst_n)
-  begin : ID_EX_PIPE_REGISTERS
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin : ID_EX_PIPE_REGISTERS
+    if (rst_n == 1'b0) begin
       alu_en_ex_o                 <= '0;
       alu_operator_ex_o           <= ALU_SLTU;
       alu_operand_a_ex_o          <= '0;
@@ -1576,16 +1580,12 @@ module riscv_id_stage
       bmask_a_ex_o                <= '0;
       bmask_b_ex_o                <= '0;
       imm_vec_ext_ex_o            <= '0;
-
       alu_vec_mode_ex_o           <= VEC_MODE32;
       ivec_op_ex_o                <= '0; //Added for ivec sb : this will go to alu for discrimination between vector and scalar op
-
       alu_clpx_shift_ex_o         <= 2'b0;
       alu_is_clpx_ex_o            <= 1'b0;
       alu_is_subrot_ex_o          <= 1'b0;
-
       mult_operator_ex_o          <= MUL_MAC32;  //Modified for ivec sb : first was '0 but enum is strongly typed so it needed to be changed to default symbol
-
       mult_operand_a_ex_o         <= '0;
       mult_operand_b_ex_o         <= '0;
       mult_operand_c_ex_o         <= '0;
@@ -1593,7 +1593,6 @@ module riscv_id_stage
       mult_sel_subword_ex_o       <= 1'b0;
       mult_signed_mode_ex_o       <= 2'b00;
       mult_imm_ex_o               <= '0;
-
       mult_dot_op_h_a_ex_o          <= '0;
       mult_dot_op_h_b_ex_o          <= '0;
       mult_dot_op_b_a_ex_o          <= '0;
@@ -1608,7 +1607,6 @@ module riscv_id_stage
       mult_clpx_shift_ex_o        <= 2'b0;
       mult_clpx_img_ex_o          <= 1'b0;
       dot_spr_operand_ex_o        <= 1'b0;
-
       apu_en_ex_o                 <= '0;
       apu_type_ex_o               <= '0;
       apu_op_ex_o                 <= '0;
@@ -1618,28 +1616,19 @@ module riscv_id_stage
       apu_operands_ex_o[2]        <= '0;
       apu_flags_ex_o              <= '0;
       apu_waddr_ex_o              <= '0;
-
-
       regfile_waddr_ex_o          <= 6'b0;
       regfile_we_ex_o             <= 1'b0;
-
       regfile_alu_waddr_ex_o      <= 6'b0;
       regfile_alu_waddr2_ex_o     <= 6'b0;
       regfile_alu_we_ex_o         <= 1'b0;
       prepost_useincr_ex_o        <= 1'b0;
-
       csr_access_ex_o             <= 1'b0;
       csr_op_ex_o                 <= CSR_OP_NONE;
-
       write_sb_csr_q              <= '0;   //Aggiunta sb fpu : Inizializzazione write_sb_csr_q
-      
       //added for ivec sb : Mux selector and next cycle for mixed precision ops.
       mux_sel_wcsr_ex_o           <= 0;       
       next_cycle_ex_o             <= '0;
-
       current_cycle_ex_o          <= '0;
-
-
       data_we_ex_o                <= 1'b0;
       data_type_ex_o              <= 2'b0;
       data_sign_ext_ex_o          <= 2'b0;
@@ -1648,202 +1637,233 @@ module riscv_id_stage
       data_load_event_ex_o        <= 1'b0;
       lsu_tosprw_ex_o             <= 3'b0;
       lsu_tospra_ex_o             <= 2'b0;
-
       data_misaligned_ex_o        <= 1'b0;
-
       pc_ex_o                     <= '0;
-
       branch_in_ex_o              <= 1'b0;
-
-    end
-    else if (data_misaligned_i) begin
-      // misaligned data access case
-      if (ex_ready_i)
-      begin // misaligned access case, only unstall alu operands
-
-        // if we are using post increments, then we have to use the
-        // original value of the register for the second memory access
-        // => keep it stalled
-        if (prepost_useincr_ex_o == 1'b1)
-        begin
-          alu_operand_a_ex_o        <= alu_operand_a;
-        end
-
-        alu_operand_b_ex_o          <= alu_operand_b;
-        regfile_alu_we_ex_o         <= regfile_alu_we_id;
-        prepost_useincr_ex_o        <= prepost_useincr;
-
-        data_misaligned_ex_o        <= 1'b1;
-      end
-    end else if (mult_multicycle_i) begin
-      mult_operand_c_ex_o <= alu_operand_c;
-    end
-    else begin
-      // normal pipeline unstall case
-
-      if (id_valid_o)
-      begin // unstall the whole pipeline
-
-        alu_en_ex_o                 <= alu_en | branch_taken_ex;
-        if (alu_en | branch_taken_ex)
-        begin
-          //this prevents divisions or multicycle instructions to keep the EX stage busy
-          alu_operator_ex_o           <= branch_taken_ex ? ALU_SLTU : alu_operator;
-          if(~branch_taken_ex) begin
-            alu_operand_a_ex_o        <= alu_operand_a;
-            alu_operand_b_ex_o        <= alu_operand_b;
-            alu_operand_c_ex_o        <= alu_operand_c;
-            bmask_a_ex_o              <= bmask_a_id;
-            bmask_b_ex_o              <= bmask_b_id;
-            imm_vec_ext_ex_o          <= imm_vec_ext_id;
-            alu_vec_mode_ex_o         <= alu_vec_mode;
-
-            ivec_op_ex_o              <= ivec_op; //Added for ivec sb : updating pipeline            
-
-            alu_is_clpx_ex_o          <= is_clpx;
-            alu_clpx_shift_ex_o       <= instr[14:13];
-            alu_is_subrot_ex_o        <= is_subrot;
-          end
-        end
-
-        mult_en_ex_o                <= mult_en;
-        dot_spr_operand_ex_o        <= dot_spr_operand;
-        if (mult_int_en) begin
-          mult_operator_ex_o        <= mult_operator;
-          mult_sel_subword_ex_o     <= mult_sel_subword;
-          mult_signed_mode_ex_o     <= mult_signed_mode;
-          mult_operand_a_ex_o       <= alu_operand_a;
-          mult_operand_b_ex_o       <= alu_operand_b;
-          mult_operand_c_ex_o       <= alu_operand_c;
-          mult_imm_ex_o             <= mult_imm_id;
-        end
-        if (mult_dot_en) begin
-
-          mult_dot_op_c_ex_o        <= alu_operand_c;
-          mult_operator_ex_o        <= mult_operator;
-          mult_dot_signed_ex_o      <= mult_dot_signed;
-
-          case(mult_operator) //added for ivec sb : clock gating for multipliers
-            MUL_DOT16, 
-            MIXED_MUL_8x16, 
-            MIXED_MUL_4x16, 
-            MIXED_MUL_2x16: begin
-              mult_dot_op_h_a_ex_o        <= alu_operand_a;
-              mult_dot_op_h_b_ex_o        <= alu_operand_b;              
-            end
-            MUL_DOT8, 
-            MIXED_MUL_2x8, 
-            MIXED_MUL_4x8: begin
-              mult_dot_op_b_a_ex_o        <= alu_operand_a;
-              mult_dot_op_b_b_ex_o        <= alu_operand_b;
-            end
-            MUL_DOT4,
-            MIXED_MUL_2x4: begin
-              mult_dot_op_n_a_ex_o        <= alu_operand_a;
-              mult_dot_op_n_b_ex_o        <= alu_operand_b;
-            end
-            MUL_DOT2: begin
-              mult_dot_op_c_a_ex_o        <= alu_operand_a;
-              mult_dot_op_c_b_ex_o        <= alu_operand_b;
-            end
-          endcase
-
-
-          mult_is_clpx_ex_o         <= is_clpx;
-          mult_clpx_shift_ex_o      <= instr[14:13];
-          if (is_clpx)
-            mult_clpx_img_ex_o      <= instr[25];
-          else
-            mult_clpx_img_ex_o      <= '0;
-        end
-
-        // APU pipeline
-        apu_en_ex_o                 <= apu_en;
-        if (apu_en) begin
-          apu_type_ex_o             <= apu_type;
-          apu_op_ex_o               <= apu_op;
-          apu_lat_ex_o              <= apu_lat;
-          apu_operands_ex_o         <= apu_operands;
-          apu_flags_ex_o            <= apu_flags;
-          apu_waddr_ex_o            <= apu_waddr;
-        end
-
-        regfile_we_ex_o             <= regfile_we_id;
-        if (regfile_we_id) begin
-          regfile_waddr_ex_o        <= regfile_waddr_id;
-        end
-
-        regfile_alu_we_ex_o         <= regfile_alu_we_id;
-        if (regfile_alu_we_id) begin
-          regfile_alu_waddr_ex_o    <= regfile_alu_waddr_id;
-          regfile_alu_waddr2_ex_o   <= regfile_alu_waddr2_id; 
-        end
-
-        prepost_useincr_ex_o        <= prepost_useincr;
-
-        csr_access_ex_o             <= csr_access;
-        csr_op_ex_o                 <= csr_op;
-
-        write_sb_csr_q              <= write_sb_csr_n; //Aggiunta sb fpu: aggiorno il registro che mi serve per il forwarding
-        mux_sel_wcsr_ex_o           <= mux_sel_wcsr;   //Added for ivec sb : Used to write the next_cycle in the csr    
-        next_cycle_ex_o             <= next_cycle;     //Added for ivec sb : Value of the next cycle for mixedPrecision
-
-        if(is_decoding_o) begin
-         current_cycle_ex_o          <= csr_current_cycle_i;
-        end
-
-        lsu_tosprw_ex_o             <= lsu_tosprw_id;
-        lsu_tospra_ex_o             <= lsu_tospra_id;
-        data_req_ex_o               <= data_req_id;
-        if (data_req_id)
-        begin // only needed for LSU when there is an active request
-          data_we_ex_o              <= data_we_id;
-          data_type_ex_o            <= data_type_id;
-          data_sign_ext_ex_o        <= data_sign_ext_id;
-          data_reg_offset_ex_o      <= data_reg_offset_id;
-          data_load_event_ex_o      <= data_load_event_id;
-        end else begin
-          data_load_event_ex_o      <= 1'b0;
-        end
-
-        data_misaligned_ex_o        <= 1'b0;
-
-        if ((jump_in_id == BRANCH_COND) || data_req_id) begin
-          pc_ex_o                   <= pc_id_i;
-        end
-
-        branch_in_ex_o              <= jump_in_id == BRANCH_COND;
-      end else if(ex_ready_i) begin
-        // EX stage is ready but we don't have a new instruction for it,
-        // so we set all write enables to 0, but unstall the pipe
-
-        regfile_we_ex_o             <= 1'b0;
-
-        regfile_alu_we_ex_o         <= 1'b0;
-
-        csr_op_ex_o                 <= CSR_OP_NONE;
-
-        data_req_ex_o               <= 1'b0;
-
-        data_load_event_ex_o        <= 1'b0;
-
-        data_misaligned_ex_o        <= 1'b0;
-
-        branch_in_ex_o              <= 1'b0;
-
-        apu_en_ex_o                 <= 1'b0;
-
+    end else begin
+      if (setback_i) begin
+        alu_en_ex_o                 <= '0;
         alu_operator_ex_o           <= ALU_SLTU;
-
+        alu_operand_a_ex_o          <= '0;
+        alu_operand_b_ex_o          <= '0;
+        alu_operand_c_ex_o          <= '0;
+        bmask_a_ex_o                <= '0;
+        bmask_b_ex_o                <= '0;
+        imm_vec_ext_ex_o            <= '0;
+        alu_vec_mode_ex_o           <= VEC_MODE32;
+        ivec_op_ex_o                <= '0; //Added for ivec sb : this will go to alu for discrimination between vector and scalar op
+        alu_clpx_shift_ex_o         <= 2'b0;
+        alu_is_clpx_ex_o            <= 1'b0;
+        alu_is_subrot_ex_o          <= 1'b0;
+        mult_operator_ex_o          <= MUL_MAC32;  //Modified for ivec sb : first was '0 but enum is strongly typed so it needed to be changed to default symbol
+        mult_operand_a_ex_o         <= '0;
+        mult_operand_b_ex_o         <= '0;
+        mult_operand_c_ex_o         <= '0;
         mult_en_ex_o                <= 1'b0;
-
-        alu_en_ex_o                 <= 1'b1;
-
-      end else if (csr_access_ex_o) begin
-       //In the EX stage there was a CSR access, to avoid multiple
-       //writes to the RF, disable regfile_alu_we_ex_o.
-       //Not doing it can overwrite the RF file with the currennt CSR value rather than the old one
-       regfile_alu_we_ex_o         <= 1'b0;
+        mult_sel_subword_ex_o       <= 1'b0;
+        mult_signed_mode_ex_o       <= 2'b00;
+        mult_imm_ex_o               <= '0;
+        mult_dot_op_h_a_ex_o          <= '0;
+        mult_dot_op_h_b_ex_o          <= '0;
+        mult_dot_op_b_a_ex_o          <= '0;
+        mult_dot_op_b_b_ex_o          <= '0;
+        mult_dot_op_n_a_ex_o          <= '0;
+        mult_dot_op_n_b_ex_o          <= '0;
+        mult_dot_op_c_a_ex_o          <= '0;
+        mult_dot_op_c_b_ex_o          <= '0;
+        mult_dot_op_c_ex_o          <= '0;
+        mult_dot_signed_ex_o        <= '0;
+        mult_is_clpx_ex_o           <= 1'b0;
+        mult_clpx_shift_ex_o        <= 2'b0;
+        mult_clpx_img_ex_o          <= 1'b0;
+        dot_spr_operand_ex_o        <= 1'b0;
+        apu_en_ex_o                 <= '0;
+        apu_type_ex_o               <= '0;
+        apu_op_ex_o                 <= '0;
+        apu_lat_ex_o                <= '0;
+        apu_operands_ex_o[0]        <= '0;
+        apu_operands_ex_o[1]        <= '0;
+        apu_operands_ex_o[2]        <= '0;
+        apu_flags_ex_o              <= '0;
+        apu_waddr_ex_o              <= '0;
+        regfile_waddr_ex_o          <= 6'b0;
+        regfile_we_ex_o             <= 1'b0;
+        regfile_alu_waddr_ex_o      <= 6'b0;
+        regfile_alu_waddr2_ex_o     <= 6'b0;
+        regfile_alu_we_ex_o         <= 1'b0;
+        prepost_useincr_ex_o        <= 1'b0;
+        csr_access_ex_o             <= 1'b0;
+        csr_op_ex_o                 <= CSR_OP_NONE;
+        write_sb_csr_q              <= '0;   //Aggiunta sb fpu : Inizializzazione write_sb_csr_q
+        //added for ivec sb : Mux selector and next cycle for mixed precision ops.
+        mux_sel_wcsr_ex_o           <= 0;       
+        next_cycle_ex_o             <= '0;
+        current_cycle_ex_o          <= '0;
+        data_we_ex_o                <= 1'b0;
+        data_type_ex_o              <= 2'b0;
+        data_sign_ext_ex_o          <= 2'b0;
+        data_reg_offset_ex_o        <= 2'b0;
+        data_req_ex_o               <= 1'b0;
+        data_load_event_ex_o        <= 1'b0;
+        lsu_tosprw_ex_o             <= 3'b0;
+        lsu_tospra_ex_o             <= 2'b0;
+        data_misaligned_ex_o        <= 1'b0;
+        pc_ex_o                     <= '0;
+        branch_in_ex_o              <= 1'b0;
+      end else if (data_misaligned_i) begin
+        // misaligned data access case
+        if (ex_ready_i)
+        begin // misaligned access case, only unstall alu operands
+          // if we are using post increments, then we have to use the
+          // original value of the register for the second memory access
+          // => keep it stalled
+          if (prepost_useincr_ex_o == 1'b1)
+          begin
+            alu_operand_a_ex_o        <= alu_operand_a;
+          end      
+          alu_operand_b_ex_o          <= alu_operand_b;
+          regfile_alu_we_ex_o         <= regfile_alu_we_id;
+          prepost_useincr_ex_o        <= prepost_useincr;
+          data_misaligned_ex_o        <= 1'b1;
+        end
+      end else if (mult_multicycle_i) begin
+        mult_operand_c_ex_o <= alu_operand_c;
+      end
+      else begin
+        // normal pipeline unstall case
+        if (id_valid_o)
+        begin // unstall the whole pipeline
+          alu_en_ex_o                 <= alu_en | branch_taken_ex;
+          if (alu_en | branch_taken_ex)
+          begin
+            //this prevents divisions or multicycle instructions to keep the EX stage busy
+            alu_operator_ex_o           <= branch_taken_ex ? ALU_SLTU : alu_operator;
+            if(~branch_taken_ex) begin
+              alu_operand_a_ex_o        <= alu_operand_a;
+              alu_operand_b_ex_o        <= alu_operand_b;
+              alu_operand_c_ex_o        <= alu_operand_c;
+              bmask_a_ex_o              <= bmask_a_id;
+              bmask_b_ex_o              <= bmask_b_id;
+              imm_vec_ext_ex_o          <= imm_vec_ext_id;
+              alu_vec_mode_ex_o         <= alu_vec_mode;
+              ivec_op_ex_o              <= ivec_op; //Added for ivec sb : updating pipeline
+              alu_is_clpx_ex_o          <= is_clpx;
+              alu_clpx_shift_ex_o       <= instr[14:13];
+              alu_is_subrot_ex_o        <= is_subrot;
+            end
+          end
+          mult_en_ex_o                <= mult_en;
+          dot_spr_operand_ex_o        <= dot_spr_operand;
+          if (mult_int_en) begin
+            mult_operator_ex_o        <= mult_operator;
+            mult_sel_subword_ex_o     <= mult_sel_subword;
+            mult_signed_mode_ex_o     <= mult_signed_mode;
+            mult_operand_a_ex_o       <= alu_operand_a;
+            mult_operand_b_ex_o       <= alu_operand_b;
+            mult_operand_c_ex_o       <= alu_operand_c;
+            mult_imm_ex_o             <= mult_imm_id;
+          end
+          if (mult_dot_en) begin
+            mult_dot_op_c_ex_o        <= alu_operand_c;
+            mult_operator_ex_o        <= mult_operator;
+            mult_dot_signed_ex_o      <= mult_dot_signed;
+            case(mult_operator) //added for ivec sb : clock gating for multipliers
+              MUL_DOT16, 
+              MIXED_MUL_8x16, 
+              MIXED_MUL_4x16, 
+              MIXED_MUL_2x16: begin
+                mult_dot_op_h_a_ex_o        <= alu_operand_a;
+                mult_dot_op_h_b_ex_o        <= alu_operand_b;              
+              end
+              MUL_DOT8, 
+              MIXED_MUL_2x8, 
+              MIXED_MUL_4x8: begin
+                mult_dot_op_b_a_ex_o        <= alu_operand_a;
+                mult_dot_op_b_b_ex_o        <= alu_operand_b;
+              end
+              MUL_DOT4,
+              MIXED_MUL_2x4: begin
+                mult_dot_op_n_a_ex_o        <= alu_operand_a;
+                mult_dot_op_n_b_ex_o        <= alu_operand_b;
+              end
+              MUL_DOT2: begin
+                mult_dot_op_c_a_ex_o        <= alu_operand_a;
+                mult_dot_op_c_b_ex_o        <= alu_operand_b;
+              end
+            endcase
+            mult_is_clpx_ex_o         <= is_clpx;
+            mult_clpx_shift_ex_o      <= instr[14:13];
+            if (is_clpx)
+              mult_clpx_img_ex_o      <= instr[25];
+            else
+              mult_clpx_img_ex_o      <= '0;
+          end
+          // APU pipeline
+          apu_en_ex_o                 <= apu_en;
+          if (apu_en) begin
+            apu_type_ex_o             <= apu_type;
+            apu_op_ex_o               <= apu_op;
+            apu_lat_ex_o              <= apu_lat;
+            apu_operands_ex_o         <= apu_operands;
+            apu_flags_ex_o            <= apu_flags;
+            apu_waddr_ex_o            <= apu_waddr;
+          end
+          regfile_we_ex_o             <= regfile_we_id;
+          if (regfile_we_id) begin
+            regfile_waddr_ex_o        <= regfile_waddr_id;
+          end
+          regfile_alu_we_ex_o         <= regfile_alu_we_id;
+          if (regfile_alu_we_id) begin
+            regfile_alu_waddr_ex_o    <= regfile_alu_waddr_id;
+            regfile_alu_waddr2_ex_o   <= regfile_alu_waddr2_id; 
+          end
+          prepost_useincr_ex_o        <= prepost_useincr;
+          csr_access_ex_o             <= csr_access;
+          csr_op_ex_o                 <= csr_op;
+          write_sb_csr_q              <= write_sb_csr_n; //Aggiunta sb fpu: aggiorno il registro che mi serve per il forwarding
+          mux_sel_wcsr_ex_o           <= mux_sel_wcsr;   //Added for ivec sb : Used to write the next_cycle in the csr    
+          next_cycle_ex_o             <= next_cycle;     //Added for ivec sb : Value of the next cycle for mixedPrecision
+          if(is_decoding_o) begin
+           current_cycle_ex_o          <= csr_current_cycle_i;
+          end
+          lsu_tosprw_ex_o             <= lsu_tosprw_id;
+          lsu_tospra_ex_o             <= lsu_tospra_id;
+          data_req_ex_o               <= data_req_id;
+          if (data_req_id)
+          begin // only needed for LSU when there is an active request
+            data_we_ex_o              <= data_we_id;
+            data_type_ex_o            <= data_type_id;
+            data_sign_ext_ex_o        <= data_sign_ext_id;
+            data_reg_offset_ex_o      <= data_reg_offset_id;
+            data_load_event_ex_o      <= data_load_event_id;
+          end else begin
+            data_load_event_ex_o      <= 1'b0;
+          end
+          data_misaligned_ex_o        <= 1'b0;
+          if ((jump_in_id == BRANCH_COND) || data_req_id) begin
+            pc_ex_o                   <= pc_id_i;
+          end
+          branch_in_ex_o              <= jump_in_id == BRANCH_COND;
+        end else if(ex_ready_i) begin
+          // EX stage is ready but we don't have a new instruction for it,
+          // so we set all write enables to 0, but unstall the pipe
+          regfile_we_ex_o             <= 1'b0;
+          regfile_alu_we_ex_o         <= 1'b0;
+          csr_op_ex_o                 <= CSR_OP_NONE;
+          data_req_ex_o               <= 1'b0;
+          data_load_event_ex_o        <= 1'b0;
+          data_misaligned_ex_o        <= 1'b0;
+          branch_in_ex_o              <= 1'b0;
+          apu_en_ex_o                 <= 1'b0;
+          alu_operator_ex_o           <= ALU_SLTU;
+          mult_en_ex_o                <= 1'b0;
+          alu_en_ex_o                 <= 1'b1;
+        end else if (csr_access_ex_o) begin
+         //In the EX stage there was a CSR access, to avoid multiple
+         //writes to the RF, disable regfile_alu_we_ex_o.
+         //Not doing it can overwrite the RF file with the currennt CSR value rather than the old one
+         regfile_alu_we_ex_o         <= 1'b0;
+        end
       end
     end
   end
@@ -1856,10 +1876,14 @@ module riscv_id_stage
 
   // current cycle selector for sb mixed-precision MACLOAD
   always_ff @(posedge clk, negedge rst_n) begin
-  if(rst_n ==1'b0)
-    curr_cyc_sel_o <= '0;
-  else
-    curr_cyc_sel_o <= id_valid_o && is_decoding_o;
+    if(rst_n ==1'b0) begin
+      curr_cyc_sel_o <= '0;
+    end else begin
+      if (setback_i)
+        curr_cyc_sel_o <= '0;
+      else
+        curr_cyc_sel_o <= id_valid_o && is_decoding_o;
+    end
   end
 
   //----------------------------------------------------------------------------

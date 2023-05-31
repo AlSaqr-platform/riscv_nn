@@ -38,6 +38,7 @@ module riscv_register_file
     // Clock and Reset
     input  logic         clk,
     input  logic         rst_n,
+    input  logic         setback_i,
 
     input  logic         test_en_i,
 
@@ -138,8 +139,11 @@ module riscv_register_file
         // R0 is nil
         mem[0] <= 32'b0;
       end else begin
-        // R0 is nil
-        mem[0] <= 32'b0;
+        if (setback_i)
+          mem[0] <= '0;
+        else
+          // R0 is nil
+          mem[0] <= 32'b0;
       end
     end
 
@@ -147,12 +151,13 @@ module riscv_register_file
     for (i = 1; i < NUM_WORDS; i++)
     begin : rf_gen
 
-      always_ff @(posedge clk, negedge rst_n)
-      begin : register_write_behavioral
+      always_ff @(posedge clk, negedge rst_n) begin : register_write_behavioral
         if (rst_n==1'b0) begin
           mem[i] <= 32'b0;
         end else begin
-          if(we_b_dec[i] == 1'b1)
+          if (setback_i)
+            mem[i] <= '0;
+          else if(we_b_dec[i] == 1'b1)
             mem[i] <= wdata_b_i;
           else if(we_a_dec[i] == 1'b1)
             mem[i] <= wdata_a_i;
@@ -164,18 +169,20 @@ module riscv_register_file
     if (FPU == 1 && Zfinx==0) begin
       // Floating point registers
       for(l = 0; l < NUM_FP_WORDS; l++) begin
-        always_ff @(posedge clk, negedge rst_n)
-        begin : fp_regs
+        always_ff @(posedge clk, negedge rst_n) begin : fp_regs
           if (rst_n==1'b0)
             mem_fp[l] <= '0;
-          else if(we_b_dec[l+NUM_WORDS] == 1'b1)
-            mem_fp[l] <= wdata_b_i;
-          else if(we_a_dec[l+NUM_WORDS] == 1'b1)
-            mem_fp[l] <= wdata_a_i;
+          else begin 
+             if (setback_i)
+               mem_fp[l] <= '0;
+             else if(we_b_dec[l+NUM_WORDS] == 1'b1)
+               mem_fp[l] <= wdata_b_i;
+             else if(we_a_dec[l+NUM_WORDS] == 1'b1)
+               mem_fp[l] <= wdata_a_i;
+          end
         end
       end
     end
-
   endgenerate
 
 endmodule

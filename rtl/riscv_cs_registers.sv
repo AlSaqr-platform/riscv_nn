@@ -50,6 +50,7 @@ module riscv_cs_registers
   // Clock and Reset
   input logic                             clk,
   input logic                             rst_n,
+  input logic                             setback_i,
 
   // Core and Cluster ID
   input logic [3:0]                       core_id_i,
@@ -1305,46 +1306,49 @@ end //PULP_SECURE
 
     for(j=0;j<N_PMP_ENTRIES;j++)
     begin : CS_PMP_REGS_FF
-      always_ff @(posedge clk, negedge rst_n)
-      begin
-          if (rst_n == 1'b0)
-          begin
+      always_ff @(posedge clk, negedge rst_n) begin
+        if (rst_n == 1'b0) begin
+          pmp_reg_q.pmpcfg[j]   <= '0;
+          pmp_reg_q.pmpaddr[j]  <= '0;
+        end else begin
+          if (setback_i) begin
             pmp_reg_q.pmpcfg[j]   <= '0;
             pmp_reg_q.pmpaddr[j]  <= '0;
-          end
-          else
-          begin
+          end else begin
             if(pmpcfg_we[j])
               pmp_reg_q.pmpcfg[j]    <= USE_PMP ? pmp_reg_n.pmpcfg[j]  : '0;
             if(pmpaddr_we[j])
               pmp_reg_q.pmpaddr[j]   <= USE_PMP ? pmp_reg_n.pmpaddr[j] : '0;
           end
         end
-      end //CS_PMP_REGS_FF
+      end
+    end //CS_PMP_REGS_FF
 
-      always_ff @(posedge clk, negedge rst_n)
-      begin
-          if (rst_n == 1'b0)
-          begin
-            uepc_q         <= '0;
-            ucause_q       <= '0;
-            mtvec_q        <= '0;
-            utvec_q        <= '0;
-            priv_lvl_q     <= PRIV_LVL_M;
-
-          end
-          else
-          begin
-            uepc_q         <= uepc_n;
-            ucause_q       <= ucause_n;
-            mtvec_q        <= mtvec_n;
-            utvec_q        <= utvec_n;
-            priv_lvl_q     <= priv_lvl_n;
-          end
+    always_ff @(posedge clk, negedge rst_n) begin
+      if (rst_n == 1'b0) begin
+        uepc_q         <= '0;
+        ucause_q       <= '0;
+        mtvec_q        <= '0;
+        utvec_q        <= '0;
+        priv_lvl_q     <= PRIV_LVL_M;
+      end else begin
+        if (setback_i) begin
+          uepc_q         <= '0;
+          ucause_q       <= '0;
+          mtvec_q        <= '0;
+          utvec_q        <= '0;
+          priv_lvl_q     <= PRIV_LVL_M;
+        end else begin
+          uepc_q         <= uepc_n;
+          ucause_q       <= ucause_n;
+          mtvec_q        <= mtvec_n;
+          utvec_q        <= utvec_n;
+          priv_lvl_q     <= priv_lvl_n;
         end
+      end
+    end
 
-  end
-  else begin
+  end else begin
 
         assign uepc_q       = '0;
         assign ucause_q     = '0;
@@ -1357,10 +1361,8 @@ end //PULP_SECURE
 
 
   // actual registers
-  always_ff @(posedge clk, negedge rst_n)
-  begin
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin
+    if (rst_n == 1'b0) begin
       if (FPU == 1) begin
         frm_q          <= '0;
         fflags_q       <= '0;
@@ -1369,7 +1371,6 @@ end //PULP_SECURE
         fpu_dst_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
         fpu_src_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
         fpu_int_fmt_q  <= fpnew_pkg::INT32; //aggiunta sb fpu
-
       end
       mstatus_q  <= '{
               uie:  1'b0,
@@ -1381,19 +1382,16 @@ end //PULP_SECURE
             };
       mepc_q      <= '0;
       mcause_q    <= '0;
-
       depc_q      <= '0;
       dcsr_q      <= '0;
       dcsr_q.prv  <= PRIV_LVL_M;
       dscratch0_q <= '0;
       dscratch1_q <= '0;
       mscratch_q  <= '0;
-
       ivec_fmt_q <= VEC_MODE32; //added for ivec sb : reset ivec format value
       ivec_mixed_cycle_q <= '0; //added for ivec sb : reset the cycles counter
       ivec_skip_size_q   <= '0; //added for ivec sb : reset skip size value
       sb_legacy_q        <= '1; //added for sb : Reset Legacy Mode
-
       macl_a_address_q  <= '0;
       macl_w_address_q  <= '0;
       macl_a_stride_q   <= '0;
@@ -1402,71 +1400,97 @@ end //PULP_SECURE
       macl_w_rollback_q <= '0;
       macl_a_skip_q     <= '0;
       macl_w_skip_q     <= '0;
-    end
-    else
-    begin
-      // update CSRs  
-      //mcause_q   <= mcause_n  ;
-          
-      if(csr_we_int) begin
-        if(FPU == 1) begin
-          frm_q      <= frm_n;
-          fflags_q   <= fflags_n;
-          fprec_q    <= fprec_n;
-
-          fpu_dst_fmt_q  <= fpu_dst_fmt_n;  //aggiunta sb fpu
-          fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
-          fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
+    end else begin
+      if (setback_i) begin
+        if (FPU == 1) begin
+          frm_q          <= '0;
+          fflags_q       <= '0;
+          fprec_q        <= '0;
+          fpu_dst_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
+          fpu_src_fmt_q  <= fpnew_pkg::FP32; //aggiunta sb fpu
+          fpu_int_fmt_q  <= fpnew_pkg::INT32; //aggiunta sb fpu
         end
-        if (PULP_SECURE == 1) begin
-            mstatus_q      <= mstatus_n ;
-        end else begin
-            mstatus_q  <= '{
-                    uie:  1'b0,
-                    mie:  mstatus_n.mie,
-                    upie: 1'b0,
-                    mpie: mstatus_n.mpie,
-                    mpp:  PRIV_LVL_M,
-                    mprv: 1'b0
-                };
+        mstatus_q  <= '{
+                uie:  1'b0,
+                mie:  1'b0,
+                upie: 1'b0,
+                mpie: 1'b0,
+                mpp:  PRIV_LVL_M,
+                mprv: 1'b0
+              };
+        mepc_q      <= '0;
+        mcause_q    <= '0;
+        depc_q      <= '0;
+        dcsr_q      <= '0;
+        dcsr_q.prv  <= PRIV_LVL_M;
+        dscratch0_q <= '0;
+        dscratch1_q <= '0;
+        mscratch_q  <= '0;
+        ivec_fmt_q <= VEC_MODE32; //added for ivec sb : reset ivec format value
+        ivec_mixed_cycle_q <= '0; //added for ivec sb : reset the cycles counter
+        ivec_skip_size_q   <= '0; //added for ivec sb : reset skip size value
+        sb_legacy_q        <= '1; //added for sb : Reset Legacy Mode
+        macl_a_address_q  <= '0;
+        macl_w_address_q  <= '0;
+        macl_a_stride_q   <= '0;
+        macl_w_stride_q   <= '0;
+        macl_a_rollback_q <= '0;
+        macl_w_rollback_q <= '0;
+        macl_a_skip_q     <= '0;
+        macl_w_skip_q     <= '0;
+      end else begin
+        // update CSRs  
+        //mcause_q   <= mcause_n  ;
+        if(csr_we_int) begin
+          if(FPU == 1) begin
+            frm_q      <= frm_n;
+            fflags_q   <= fflags_n;
+            fprec_q    <= fprec_n;
+            fpu_dst_fmt_q  <= fpu_dst_fmt_n;  //aggiunta sb fpu
+            fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
+            fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
+          end
+          if (PULP_SECURE == 1) begin
+              mstatus_q      <= mstatus_n ;
+          end else begin
+              mstatus_q  <= '{
+                      uie:  1'b0,
+                      mie:  mstatus_n.mie,
+                      upie: 1'b0,
+                      mpie: mstatus_n.mpie,
+                      mpp:  PRIV_LVL_M,
+                      mprv: 1'b0
+                  };
+          end
+          // it doesn't work with mepc gated
+          //mepc_q     <= mepc_n    ;
+          mcause_q   <= mcause_n  ;
+          // here it works
+          depc_q     <= depc_n    ;
+          dcsr_q     <= dcsr_n;
+          dscratch0_q<= dscratch0_n;
+          dscratch1_q<= dscratch1_n;
+          mscratch_q <= mscratch_n;
+          ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
+          ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
+          ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
+          sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
+          //macl_a_address_q  <= macl_a_address_n;
+          //macl_w_address_q  <= macl_w_address_n;
+          macl_a_stride_q   <= macl_a_stride_n;
+          macl_w_stride_q   <= macl_w_stride_n;
+          macl_a_rollback_q <= macl_a_rollback_n;
+          macl_w_rollback_q <= macl_w_rollback_n;
+          macl_a_skip_q     <= macl_a_skip_n;
+          macl_w_skip_q     <= macl_w_skip_n;
         end
-
-        // it doesn't work with mepc gated
-
-        //mepc_q     <= mepc_n    ;
-        mcause_q   <= mcause_n  ;
-
-        // here it works
-
-        depc_q     <= depc_n    ;
-        dcsr_q     <= dcsr_n;
-        dscratch0_q<= dscratch0_n;
-        dscratch1_q<= dscratch1_n;
-        mscratch_q <= mscratch_n;
-
-        ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
-        ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
-        ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
-        sb_legacy_q <= sb_legacy_n;               //Added for sb : Update legacy value
-        
-        //macl_a_address_q  <= macl_a_address_n;
-        //macl_w_address_q  <= macl_w_address_n;
-        macl_a_stride_q   <= macl_a_stride_n;
-        macl_w_stride_q   <= macl_w_stride_n;
-        macl_a_rollback_q <= macl_a_rollback_n;
-        macl_w_rollback_q <= macl_w_rollback_n;
-        macl_a_skip_q     <= macl_a_skip_n;
-        macl_w_skip_q     <= macl_w_skip_n;
+        if(csr_we_int || csr_macl_we_int)
+          begin          
+            macl_a_address_q  <= macl_a_address_n;
+            macl_w_address_q  <= macl_w_address_n;
+          end
+        mepc_q     <= mepc_n    ;
       end
-
-      if(csr_we_int || csr_macl_we_int)
-        begin          
-          macl_a_address_q  <= macl_a_address_n;
-          macl_w_address_q  <= macl_w_address_n;
-        end
-
-      mepc_q     <= mepc_n    ;
-
     end
   end
 
@@ -1622,34 +1646,36 @@ end //PULP_SECURE
   end
 
   // Performance Counter Registers
-  always_ff @(posedge clk, negedge rst_n)
-  begin
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin
+    if (rst_n == 1'b0) begin
       id_valid_q <= 1'b0;
-
       PCER_q <= '0;
       PCMR_q <= 2'h3;
-
       for(int i = 0; i < N_PERF_REGS; i++)
       begin
         PCCR_q[i]     <= '0;
         PCCR_inc_q[i] <= '0;
       end
-    end
-    else
-    begin
-      id_valid_q <= id_valid_i;
-
-      PCER_q <= PCER_n;
-      PCMR_q <= PCMR_n;
-
-      for(int i = 0; i < N_PERF_REGS; i++)
-      begin
-        PCCR_q[i]     <= PCCR_n[i];
-        PCCR_inc_q[i] <= PCCR_inc[i];
+    end else begin
+      if (setback_i) begin
+        id_valid_q <= 1'b0;
+        PCER_q <= '0;
+        PCMR_q <= 2'h3;
+        for(int i = 0; i < N_PERF_REGS; i++)
+        begin
+          PCCR_q[i]     <= '0;
+          PCCR_inc_q[i] <= '0;
+        end
+      end else begin
+        id_valid_q <= id_valid_i;
+        PCER_q <= PCER_n;
+        PCMR_q <= PCMR_n;
+        for(int i = 0; i < N_PERF_REGS; i++)
+        begin
+          PCCR_q[i]     <= PCCR_n[i];
+          PCCR_inc_q[i] <= PCCR_inc[i];
+        end
       end
-
     end
   end
 

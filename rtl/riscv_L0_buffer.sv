@@ -15,6 +15,7 @@ module riscv_L0_buffer
 (
   input  logic                                clk,
   input  logic                                rst_n,
+  input  logic                                setback_i,
 
   input  logic                                prefetch_i,
   input  logic [31:0]                         prefetch_addr_i,
@@ -238,28 +239,31 @@ module riscv_L0_buffer
   // registers
   //////////////////////////////////////////////////////////////////////////////
 
-  always_ff @(posedge clk, negedge rst_n)
-  begin
-    if (~rst_n)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin
+    if (~rst_n) begin
       CS              <= EMPTY;
       L0_buffer       <= '0;
       addr_q          <= '0;
       //fetch_valid_int <= '0;
-    end
-    else
-    begin
-      CS             <= NS;
-
-      //fetch_valid_int <= send_rvalid_int;
-
-      if (instr_rvalid_i)
-      begin
-        L0_buffer <= instr_rdata_i;
+    end else begin
+      if (setback_i) begin
+        CS              <= EMPTY;
+        L0_buffer       <= '0;
+        addr_q          <= '0;
+        //fetch_valid_int <= '0;
+      end else begin
+        CS             <= NS;
+      
+        //fetch_valid_int <= send_rvalid_int;
+      
+        if (instr_rvalid_i)
+        begin
+          L0_buffer <= instr_rdata_i;
+        end
+      
+        if (branch_i | hwlp_i | prefetch_i)
+          addr_q <= instr_addr_int;
       end
-
-      if (branch_i | hwlp_i | prefetch_i)
-        addr_q <= instr_addr_int;
     end
   end
 

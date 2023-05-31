@@ -28,6 +28,7 @@ module riscv_prefetch_buffer
 (
   input  logic        clk,
   input  logic        rst_n,
+  input  logic        setback_i,
 
   input  logic        req_i,
 
@@ -89,6 +90,7 @@ module riscv_prefetch_buffer
   (
     .clk                   ( clk               ),
     .rst_n                 ( rst_n             ),
+    .setback_i             ( setback_i         ),
 
     .clear_i               ( fifo_clear        ),
 
@@ -413,19 +415,22 @@ module riscv_prefetch_buffer
 
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if(rst_n == 1'b0)
-    begin
+    if(rst_n == 1'b0) begin
       CS              <= IDLE;
       hwlp_CS         <= HWLP_NONE;
       instr_addr_q    <= '0;
-    end
-    else
-    begin
-      CS              <= NS;
-      hwlp_CS         <= hwlp_NS;
-
-      if (addr_valid) begin
-        instr_addr_q    <= (hwloop_speculative & ~branch_i) ? hwloop_target_i : instr_addr_o;
+    end else begin
+      if (setback_i) begin
+        CS              <= IDLE;
+        hwlp_CS         <= HWLP_NONE;
+        instr_addr_q    <= '0;
+      end else begin
+        CS              <= NS;
+        hwlp_CS         <= hwlp_NS;
+        
+        if (addr_valid) begin
+          instr_addr_q    <= (hwloop_speculative & ~branch_i) ? hwloop_target_i : instr_addr_o;
+        end
       end
     end
   end

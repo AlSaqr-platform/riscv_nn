@@ -65,6 +65,7 @@ module riscv_core
   // Clock and Reset
   input logic                            clk_i,
   input logic                            rst_ni,
+  input logic                            setback_i,
 
   input logic                            clock_en_i, // enable clock, otherwise it is gated
   input logic                            test_en_i, // enable all clock gates for testing
@@ -477,6 +478,9 @@ module riscv_core
     if (rst_ni == 1'b0) begin
       core_busy_q <= 1'b0;
     end else begin
+    if (setback_i)
+      core_busy_q <= 1'b0;
+    else
       core_busy_q <= core_busy_int;
     end
   end
@@ -511,6 +515,7 @@ module riscv_core
   (
     .clk                 ( clk               ),
     .rst_n               ( rst_ni            ),
+    .setback_i           ( setback_i         ),
 
     // boot address
     .boot_addr_i         ( boot_addr_i[31:1] ),
@@ -605,6 +610,7 @@ module riscv_core
   (
     .clk                          ( clk                  ),
     .rst_n                        ( rst_ni               ),
+    .setback_i                    ( setback_i            ),
 
     .test_en_i                    ( test_en_i            ),
 
@@ -844,6 +850,7 @@ module riscv_core
     // Global signals: Clock and active low asynchronous reset
     .clk                        ( clk                          ),
     .rst_n                      ( rst_ni                       ),
+    .setback_i                  ( setback_i                    ),
 
     // Alu signals from ID stage
     .alu_en_i                   ( alu_en_ex                    ),
@@ -985,6 +992,7 @@ module riscv_core
   (
     .clk                   ( clk                ),
     .rst_n                 ( rst_ni             ),
+    .setback_i             ( setback_i          ),
 
     //output to data memory
     .data_req_o            ( data_req_pmp       ),
@@ -1049,6 +1057,7 @@ module riscv_core
     (
       .clk_i              ( clk              ),
       .rstn_i             ( rst_ni           ),
+      .setback_i          ( setback_i        ),
       .update_a_i         ( lsu_tospra_ex[0] ),
       .update_w_i         ( lsu_tosprw_ex[0] ),
       .id_valid_i         ( id_valid         ),
@@ -1092,6 +1101,7 @@ module riscv_core
   (
     .clk                     ( clk                ),
     .rst_n                   ( rst_ni             ),
+    .setback_i               ( setback_i          ),
 
     // Core and Cluster ID from outside
     .core_id_i               ( core_id_i          ),
@@ -1242,6 +1252,7 @@ module riscv_core
   (
     .clk                     ( clk                ),
     .rst_n                   ( rst_ni             ),
+    .setback_i               ( setback_i          ),
 
     .pmp_privil_mode_i       ( current_priv_lvl   ),
 
@@ -1296,6 +1307,7 @@ module riscv_core
   (
     .clk            ( tracer_clk                           ), // always-running clock for tracing
     .rst_n          ( rst_ni                               ),
+    .setback_i      ( setback_i                            ),
 
     .fetch_enable   ( fetch_enable_i                       ),
     .core_id        ( core_id_i                            ),

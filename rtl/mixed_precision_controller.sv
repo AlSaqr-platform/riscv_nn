@@ -4,6 +4,7 @@ module mixed_precision_controller
   (
    input logic                           clk,
    input logic                           rst_n,
+   input logic                           setback_i,
    input logic                           illegal_insn_i,
    input logic                           id_valid_i,
    input logic                           is_decoding_i,
@@ -81,20 +82,25 @@ module mixed_precision_controller
       if (rst_n == 1'b0) begin
          last_ins <= MPC_CSR;
          skip_counter_q <= '0;         
-      end
-      //Check if last instruction was a write to csr
-      else if( (instr_rdata_i[6:0] == OPCODE_SYSTEM) && (instr_rdata_i[13:12] == 2'b01) && (instr_rdata_i[31:20] == 12'h00D) )
-        last_ins <= MPC_CSR_WRITE;
-      //Check if last instruction was a dotp
-      else if ( (instr_rdata_i[6:0] == OPCODE_VECOP) && (instr_rdata_i[31:26] inside {DOTUP, DOTUSP, DOTSP, SDOTUP, SDOTUSP, SDOTSP} ) ||
-                ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (instr_rdata_i[11:7] != 5'h00) && id_valid_i)) begin
-         last_ins <= MPC_MIX_CNTRL;
-         skip_counter_q <= skip_counter_n;
-      end
-      //Default uses csr value
-      else
-        last_ins <= MPC_CSR;     
-   end // always_ff @
+      end else begin
+        if (setback_i) begin
+          last_ins <= MPC_CSR;
+          skip_counter_q <= '0;
+        end
+        //Check if last instruction was a write to csr
+        else if( (instr_rdata_i[6:0] == OPCODE_SYSTEM) && (instr_rdata_i[13:12] == 2'b01) && (instr_rdata_i[31:20] == 12'h00D) )
+          last_ins <= MPC_CSR_WRITE;
+        //Check if last instruction was a dotp
+        else if ( (instr_rdata_i[6:0] == OPCODE_VECOP) && (instr_rdata_i[31:26] inside {DOTUP, DOTUSP, DOTSP, SDOTUP, SDOTUSP, SDOTSP} ) ||
+                  ((instr_rdata_i[6:0] == OPCODE_MAC_LOAD) && (instr_rdata_i[11:7] != 5'h00) && id_valid_i)) begin
+           last_ins <= MPC_MIX_CNTRL;
+           skip_counter_q <= skip_counter_n;
+        end
+        //Default uses csr value
+        else
+          last_ins <= MPC_CSR;  
+      end   
+   end
    
    assign mux_sel_mpc_o = last_ins;
 

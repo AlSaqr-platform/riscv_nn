@@ -30,6 +30,7 @@ module riscv_prefetch_L0_buffer
 (
   input  logic                                clk,
   input  logic                                rst_n,
+  input  logic                                setback_i,
 
   input  logic                                req_i,
 
@@ -106,6 +107,7 @@ module riscv_prefetch_L0_buffer
   (
     .clk                  ( clk                ),
     .rst_n                ( rst_n              ),
+    .setback_i            ( setback_i          ),
 
     .prefetch_i           ( do_fetch           ),
     .prefetch_addr_i      ( addr_real_next   ), //addr_aligned_next
@@ -516,34 +518,35 @@ module riscv_prefetch_L0_buffer
 
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if (~rst_n)
-    begin
+    if (~rst_n) begin
       addr_q         <= '0;
       is_hwlp_q      <= 1'b0;
       CS             <= IDLE;
       rdata_last_q   <= '0;
-    end
-    else
-    begin
-      addr_q    <= addr_n;
-      is_hwlp_q <= is_hwlp_n;
-
-      CS <= NS;
-
-      if (save_rdata_hwlp)
-        rdata_last_q <= rdata_o;
-      else if(save_rdata_last)
-           begin
-              //rdata_last_q <= rdata_L0[3];
-              if(ready_i)
-              begin
-                   rdata_last_q <= rdata_L0[3];//rdata;
-              end
-              else
-              begin
-                   rdata_last_q <= rdata;//rdata;
-              end
-           end
+    end else begin
+      if (setback_i) begin
+        addr_q         <= '0;
+        is_hwlp_q      <= 1'b0;
+        CS             <= IDLE;
+        rdata_last_q   <= '0;
+      end else begin
+        addr_q    <= addr_n;
+        is_hwlp_q <= is_hwlp_n;
+        
+        CS <= NS;
+        
+        if (save_rdata_hwlp)
+          rdata_last_q <= rdata_o;
+        else if(save_rdata_last) begin
+          //rdata_last_q <= rdata_L0[3];
+          if(ready_i)
+          begin
+            rdata_last_q <= rdata_L0[3];//rdata;
+          end else begin
+            rdata_last_q <= rdata;//rdata;
+          end
+        end
+      end
     end
   end
 

@@ -42,6 +42,7 @@ module riscv_tracer
   // Clock and Reset
   input  logic        clk,
   input  logic        rst_n,
+  input  logic        setback_i,
 
   input  logic        fetch_enable,
   input  logic [3:0]  core_id,
@@ -804,8 +805,12 @@ module riscv_tracer
   begin
     if (rst_n == 1'b0)
       cycles = 0;
-    else
-      cycles = cycles + 1;
+    else begin
+      if (setback_i)
+        cycles = 0;
+      else
+        cycles = cycles + 1;
+    end
   end
 
   // open/close output file for writing

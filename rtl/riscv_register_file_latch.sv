@@ -40,6 +40,7 @@ module riscv_register_file
   // Clock and Reset
   input  logic                   clk,
   input  logic                   rst_n,
+  input  logic                   setback_i,
 
   input  logic                   test_en_i,
 
@@ -124,22 +125,25 @@ module riscv_register_file
       );
 
    // use clk_int here, since otherwise we don't want to write anything anyway
-   always_ff @(posedge clk_int, negedge rst_n)
-     begin : sample_waddr
-        if (~rst_n) begin
-           wdata_a_q        <= '0;
-           wdata_b_q        <= '0;
-           waddr_onehot_b_q <= '0;
-        end else begin
-           if(we_a_i)
-             wdata_a_q <= wdata_a_i;
-
-           if(we_b_i)
-             wdata_b_q <= wdata_b_i;
-
-           waddr_onehot_b_q <= waddr_onehot_b;
-        end
+   always_ff @(posedge clk_int, negedge rst_n) begin : sample_waddr
+     if (~rst_n) begin
+        wdata_a_q        <= '0;
+        wdata_b_q        <= '0;
+        waddr_onehot_b_q <= '0;
+     end else begin
+       if (setback_i) begin
+         wdata_a_q        <= '0;
+         wdata_b_q        <= '0;
+         waddr_onehot_b_q <= '0;
+       end else begin
+          if(we_a_i)
+            wdata_a_q <= wdata_a_i;
+          if(we_b_i)
+            wdata_b_q <= wdata_b_i;
+          waddr_onehot_b_q <= waddr_onehot_b;
+       end
      end
+   end
 
    //-----------------------------------------------------------------------------
    //-- WRITE : Write Address Decoder (WAD), combinatorial process

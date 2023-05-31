@@ -28,6 +28,7 @@ module riscv_load_store_unit
 (
     input  logic         clk,
     input  logic         rst_n,
+    input  logic         setback_i,
 
     // output to data memory
     output logic         data_req_o,
@@ -168,19 +169,23 @@ module riscv_load_store_unit
   // FF for rdata alignment and sign-extension
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if(rst_n == 1'b0)
-    begin
+    if(rst_n == 1'b0) begin
       data_type_q     <= '0;
       rdata_offset_q  <= '0;
       data_sign_ext_q <= '0;
       data_we_q       <= 1'b0;
-    end
-    else if (data_gnt_i == 1'b1) // request was granted, we wait for rvalid and can continue to WB
-    begin
-      data_type_q     <= data_type_ex_i;
-      rdata_offset_q  <= data_addr_int[1:0];
-      data_sign_ext_q <= data_sign_ext_ex_i;
-      data_we_q       <= data_we_ex_i;
+    end else begin
+      if(setback_i) begin
+        data_type_q     <= '0;
+        rdata_offset_q  <= '0;
+        data_sign_ext_q <= '0;
+        data_we_q       <= 1'b0;
+      end else if (data_gnt_i == 1'b1) begin// request was granted, we wait for rvalid and can continue to WB
+        data_type_q     <= data_type_ex_i;
+        rdata_offset_q  <= data_addr_int[1:0];
+        data_sign_ext_q <= data_sign_ext_ex_i;
+        data_we_q       <= data_we_ex_i;
+      end  
     end
   end
 
@@ -316,26 +321,27 @@ module riscv_load_store_unit
 
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if(rst_n == 1'b0)
-    begin
+    if(rst_n == 1'b0) begin
       CS            <= IDLE;
       rdata_q       <= '0;
-    end
-    else
-    begin
-      CS            <= NS;
-
-      if (data_rvalid_i && (~data_we_q))
-      begin
-        // if we have detected a misaligned access, and we are
-        // currently doing the first part of this access, then
-        // store the data coming from memory in rdata_q.
-        // In all other cases, rdata_q gets the value that we are
-        // writing to the register file
-        if ((data_misaligned_ex_i == 1'b1) || (data_misaligned_o == 1'b1))
-          rdata_q  <= data_rdata_i;
-        else
-          rdata_q  <= data_rdata_ext;
+    end else begin
+      if (setback_i) begin
+        CS            <= IDLE;
+        rdata_q       <= '0;
+      end else begin
+        CS            <= NS;
+        
+        if (data_rvalid_i && (~data_we_q)) begin
+          // if we have detected a misaligned access, and we are
+          // currently doing the first part of this access, then
+          // store the data coming from memory in rdata_q.
+          // In all other cases, rdata_q gets the value that we are
+          // writing to the register file
+          if ((data_misaligned_ex_i == 1'b1) || (data_misaligned_o == 1'b1))
+            rdata_q  <= data_rdata_i;
+          else
+            rdata_q  <= data_rdata_ext;
+        end
       end
     end
   end

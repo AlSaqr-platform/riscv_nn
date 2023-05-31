@@ -27,6 +27,7 @@
 module riscv_apu_disp (
   input logic                           clk_i,
   input logic                           rst_ni,
+  input logic                           setback_i,
 
   // request input
   input logic                           enable_i,
@@ -108,10 +109,17 @@ module riscv_apu_disp (
       addr_inflight    <= '0;
       addr_waiting     <= '0;
     end else begin
-       valid_inflight  <= valid_inflight_dn;
-       valid_waiting   <= valid_waiting_dn;
-       addr_inflight   <= addr_inflight_dn;
-       addr_waiting    <= addr_waiting_dn;
+      if(setback_i) begin
+        valid_inflight   <= 1'b0;
+        valid_waiting    <= 1'b0;
+        addr_inflight    <= '0;
+        addr_waiting     <= '0;
+      end else begin
+         valid_inflight  <= valid_inflight_dn;
+         valid_waiting   <= valid_waiting_dn;
+         addr_inflight   <= addr_inflight_dn;
+         addr_waiting    <= addr_waiting_dn;
+      end
     end
   end
 
@@ -156,9 +164,10 @@ module riscv_apu_disp (
     if(~rst_ni) begin
       apu_lat    <= '0;
     end else begin
-      if(valid_req) begin
+      if(setback_i)
+        apu_lat <= '0;
+      else if(valid_req)
         apu_lat  <= apu_lat_i;
-      end
     end
   end
 

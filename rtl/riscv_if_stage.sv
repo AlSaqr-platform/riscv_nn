@@ -38,6 +38,7 @@ module riscv_if_stage
 (
     input  logic        clk,
     input  logic        rst_n,
+    input  logic        setback_i,
 
     // Used to calculate the exception offsets
     input  logic [23:0] m_trap_base_addr_i,
@@ -170,6 +171,7 @@ module riscv_if_stage
       (
         .clk               ( clk                         ),
         .rst_n             ( rst_n                       ),
+        .setback_i         ( setback_i                   ),
 
         .req_i             ( req_i                       ),
 
@@ -204,6 +206,7 @@ module riscv_if_stage
       (
         .clk               ( clk                         ),
         .rst_n             ( rst_n                       ),
+        .setback_i         ( setback_i                   ),
 
         .req_i             ( req_i                       ),
 
@@ -242,7 +245,10 @@ module riscv_if_stage
     if (rst_n == 1'b0) begin
       offset_fsm_cs     <= IDLE;
     end else begin
-      offset_fsm_cs     <= offset_fsm_ns;
+      if (setback_i)
+        offset_fsm_cs     <= IDLE;
+      else
+        offset_fsm_cs     <= offset_fsm_ns;
     end
   end
 
@@ -351,13 +357,12 @@ module riscv_if_stage
   // prefetch -> IF registers
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if (rst_n == 1'b0)
-    begin
+    if (rst_n == 1'b0) begin
       hwlp_dec_cnt_if <= '0;
-    end
-    else
-    begin
-      if (hwlp_jump)
+    end else begin
+      if (setback_i)
+        hwlp_dec_cnt_if <= '0;
+      else if (hwlp_jump)
         hwlp_dec_cnt_if <= hwlp_dec_cnt;
     end
   end
@@ -365,8 +370,7 @@ module riscv_if_stage
   // IF-ID pipeline registers, frozen when the ID stage is stalled
   always_ff @(posedge clk, negedge rst_n)
   begin : IF_ID_PIPE_REGISTERS
-    if (rst_n == 1'b0)
-    begin
+    if (rst_n == 1'b0) begin
       instr_valid_id_o      <= 1'b0;
       instr_rdata_id_o      <= '0;
       illegal_c_insn_id_o   <= 1'b0;
@@ -375,13 +379,17 @@ module riscv_if_stage
       is_hwlp_id_q          <= 1'b0;
       hwlp_dec_cnt_id_o     <= '0;
       is_fetch_failed_o     <= 1'b0;
-
-    end
-    else
-    begin
-
-      if (if_valid)
-      begin
+    end else begin
+      if (setback_i) begin
+        instr_valid_id_o      <= 1'b0;
+        instr_rdata_id_o      <= '0;
+        illegal_c_insn_id_o   <= 1'b0;
+        is_compressed_id_o    <= 1'b0;
+        pc_id_o               <= '0;
+        is_hwlp_id_q          <= 1'b0;
+        hwlp_dec_cnt_id_o     <= '0;
+        is_fetch_failed_o     <= 1'b0;
+      end else if (if_valid) begin
         instr_valid_id_o    <= 1'b1;
         instr_rdata_id_o    <= instr_decompressed;
         illegal_c_insn_id_o <= illegal_c_insn;

@@ -30,6 +30,7 @@ module riscv_hwloop_regs
 (
   input  logic                     clk,
   input  logic                     rst_n,
+  input  logic                     setback_i,
 
   // from ex stage
   input  logic           [31:0]    hwlp_start_data_i,
@@ -66,15 +67,15 @@ module riscv_hwloop_regs
   /////////////////////////////////////////////////////////////////////////////////
   // HWLOOP start-address register                                               //
   /////////////////////////////////////////////////////////////////////////////////
-  always_ff @(posedge clk, negedge rst_n)
-  begin : HWLOOP_REGS_START
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin : HWLOOP_REGS_START
+    if (rst_n == 1'b0) begin
       hwlp_start_q <= '{default: 32'b0};
-    end
-    else if (hwlp_we_i[0] == 1'b1)
-    begin
-      hwlp_start_q[hwlp_regid_i] <= hwlp_start_data_i;
+    end else begin
+      if (setback_i) begin
+        hwlp_start_q <= '{default: 32'b0};
+      end else if (hwlp_we_i[0] == 1'b1) begin
+        hwlp_start_q[hwlp_regid_i] <= hwlp_start_data_i;
+      end
     end
   end
 
@@ -82,15 +83,15 @@ module riscv_hwloop_regs
   /////////////////////////////////////////////////////////////////////////////////
   // HWLOOP end-address register                                                 //
   /////////////////////////////////////////////////////////////////////////////////
-  always_ff @(posedge clk, negedge rst_n)
-  begin : HWLOOP_REGS_END
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin : HWLOOP_REGS_END
+    if (rst_n == 1'b0) begin
       hwlp_end_q <= '{default: 32'b0};
-    end
-    else if (hwlp_we_i[1] == 1'b1)
-    begin
-      hwlp_end_q[hwlp_regid_i] <= hwlp_end_data_i;
+    end else begin
+      if (setback_i) begin
+        hwlp_end_q <= '{default: 32'b0};
+      end else if (hwlp_we_i[1] == 1'b1) begin
+        hwlp_end_q[hwlp_regid_i] <= hwlp_end_data_i;
+      end
     end
   end
 
@@ -103,16 +104,14 @@ module riscv_hwloop_regs
     assign hwlp_counter_n[k] = hwlp_counter_q[k] - 1;
   end
 
-  always_ff @(posedge clk, negedge rst_n)
-  begin : HWLOOP_REGS_COUNTER
-    if (rst_n == 1'b0)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin : HWLOOP_REGS_COUNTER
+    if (rst_n == 1'b0) begin
       hwlp_counter_q <= '{default: 32'b0};
-    end
-    else
-    begin
+    end else begin
+      if (setback_i) begin
+        hwlp_counter_q <= '{default: 32'b0};
+      end else begin
       for (i = 0; i < N_REGS; i++)
-      begin
         if ((hwlp_we_i[2] == 1'b1) && (i == hwlp_regid_i)) begin
           hwlp_counter_q[i] <= hwlp_cnt_data_i;
         end else begin

@@ -43,6 +43,7 @@ module register_file_test_wrap
    // Clock and Reset
    input  logic                   clk,
    input  logic                   rst_n,
+   input  logic                   setback_i,
 
    input  logic                   test_en_i,
 
@@ -114,17 +115,15 @@ module register_file_test_wrap
    always_ff @(posedge clk or negedge rst_n)
    begin : proc_
       if(~rst_n)
-      begin
          TestReadAddr_Q <= '0;
-      end
-      else
-      begin
-         if((CSN_T == 1'b0)&& ( WEN_T == 1'b1)) // Test Read
-         begin
-            // FIX for CADENCE PMBIST : ignore Addr MSB (FPU=0) and internally invert address
-            // TestReadAddr_Q <= A_T;
-            TestReadAddr_Q <= {1'b0,~A_T[ADDR_WIDTH-2:0]} ;
-         end
+      else begin
+        if (setback_i)
+          TestReadAddr_Q <= '0;
+        else if((CSN_T == 1'b0)&& ( WEN_T == 1'b1)) begin // Test Read
+          // FIX for CADENCE PMBIST : ignore Addr MSB (FPU=0) and internally invert address
+          // TestReadAddr_Q <= A_T;
+          TestReadAddr_Q <= {1'b0,~A_T[ADDR_WIDTH-2:0]} ;
+        end
       end
    end
 
@@ -140,6 +139,7 @@ module register_file_test_wrap
    (
       .clk        ( clk                 ),
       .rst_n      ( rst_n               ),
+      .setback_i  ( setback_i           ),
 
       .test_en_i  ( test_en_i           ),
 
@@ -160,9 +160,5 @@ module register_file_test_wrap
       .wdata_b_i  ( WriteData_b_muxed   ),
       .we_b_i     ( WriteEnable_b_muxed )
    );
-
-
-
-
 
 endmodule

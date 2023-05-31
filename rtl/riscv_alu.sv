@@ -36,6 +36,7 @@ module riscv_alu
 )(
   input logic                    clk,
   input logic                    rst_n,
+  input logic                    setback_i,
   input logic                    enable_i,
   input logic [ALU_OP_WIDTH-1:0] operator_i,
   input logic [31:0]             operand_a_i,
@@ -1315,6 +1316,7 @@ module riscv_alu
         (
          .Clk_CI       ( clk               ),
          .Rst_RBI      ( rst_n             ),
+         .setback_i    ( setback_i         ),
 
          // input IF
          .OpA_DI       ( operand_b_i       ),

@@ -35,6 +35,7 @@ module riscv_mult
 (
   input  logic        clk,
   input  logic        rst_n,
+  input  logic        setback_i,
 
   input  logic        enable_i,
 
@@ -215,17 +216,21 @@ module riscv_mult
 
   always_ff @(posedge clk, negedge rst_n)
   begin
-    if (~rst_n)
-    begin
+    if (~rst_n) begin
       mulh_CS      <= IDLE;
       mulh_carry_q <= 1'b0;
     end else begin
-      mulh_CS      <= mulh_NS;
-
-      if (mulh_save)
-        mulh_carry_q <= ~mulh_clearcarry & short_mac[32];
-      else if (ex_ready_i) // clear carry when we are going to the next instruction
+      if (setback_i) begin
+        mulh_CS      <= IDLE;
         mulh_carry_q <= 1'b0;
+      end else begin
+        mulh_CS      <= mulh_NS;
+        
+        if (mulh_save)
+          mulh_carry_q <= ~mulh_clearcarry & short_mac[32];
+        else if (ex_ready_i) // clear carry when we are going to the next instruction
+          mulh_carry_q <= 1'b0;
+      end
     end
   end
 

@@ -52,6 +52,7 @@ module riscv_ex_stage
 (
   input logic                            clk,
   input logic                            rst_n,
+  input logic                            setback_i,
 
   // ALU signals from ID stage
   input logic [ALU_OP_WIDTH-1:0]         alu_operator_i,
@@ -336,6 +337,7 @@ module riscv_ex_stage
   (
     .clk                 ( clk             ),
     .rst_n               ( rst_n           ),
+    .setback_i           ( setback_i       ),
     .enable_i            ( alu_en_i        ),
     .operator_i          ( alu_operator_i  ),
     .operand_a_i         ( alu_operand_a_i ),
@@ -410,6 +412,7 @@ module riscv_ex_stage
   (
     .clk             ( clk                  ),
     .rst_n           ( rst_n                ),
+    .setback_i       ( setback_i            ),
 
     .enable_i        ( mult_en_i            ),
     .operator_i      ( mult_operator_i      ),
@@ -461,6 +464,7 @@ module riscv_ex_stage
          (
          .clk_i              ( clk                            ),
          .rst_ni             ( rst_n                          ),
+         .setback_i          ( setback_i                      ),
 
          .enable_i           ( apu_en_i                       ),
          .apu_lat_i          ( apu_lat_i                      ),
@@ -649,54 +653,61 @@ module riscv_ex_stage
   assign aspr_rnn_n[0] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b0)    ? lsu_rdata_i : aspr_rnn[0]; //RNN_EXT
   assign aspr_rnn_n[1] = (lsu_tospra_wb[0] && spr_rnn_en && lsu_tospra_wb[1]==1'b1)    ? lsu_rdata_i : aspr_rnn[1]; //RNN_EXT
 
-always_ff @(posedge clk, negedge rst_n)
-  begin : SPR
-    if (~rst_n)
-    begin
+always_ff @(posedge clk, negedge rst_n) begin : SPR
+  if (~rst_n) begin
+    wspr_rnn   <= '0;
+    aspr_rnn   <= '0;
+    mult_result_p <= '0; //RNN_EXT
+  end else begin
+    if (setback_i) begin
       wspr_rnn   <= '0;
       aspr_rnn   <= '0;
       mult_result_p <= '0; //RNN_EXT
-    end
-    else
-    begin
-        wspr_rnn      <= wspr_rnn_n;
-        aspr_rnn      <= aspr_rnn_n;
-        mult_result_p <= mult_result_n; //RNN_EXT
+    end else begin
+      wspr_rnn      <= wspr_rnn_n;
+      aspr_rnn      <= aspr_rnn_n;
+      mult_result_p <= mult_result_n; //RNN_EXT
     end
   end
+end
 
 
 
   ///////////////////////////////////////
   // EX/WB Pipeline Register           //
   ///////////////////////////////////////
-  always_ff @(posedge clk, negedge rst_n)
-  begin : EX_WB_Pipeline_Register
-    if (~rst_n)
-    begin
+  always_ff @(posedge clk, negedge rst_n) begin : EX_WB_Pipeline_Register
+    if (~rst_n) begin
       regfile_waddr_lsu   <= '0;
       regfile_we_lsu      <= 1'b0;
       lsu_tosprw_wb        <= 3'b0;  //RNN_EXT
       lsu_tospra_wb        <= 2'b0;
       regfile_alu_waddr2_wb <= 'b0;  //RNN_EXT
       dot_spr_operand_wb  <= '0;
-    end
-    else
-    begin
-      if (ex_valid_o) // wb_ready_i is implied
-      begin
-        regfile_we_lsu    <= regfile_we_i & ~lsu_err_i;
-        lsu_tosprw_wb <= lsu_tosprw_ex_i; //RNN_EXT//RNN_EXT
-        lsu_tospra_wb <= lsu_tospra_ex_i;//RNN_EXT
-        dot_spr_operand_wb <= dot_spr_operand_i;
-        regfile_alu_waddr2_wb <= regfile_alu_waddr2_i; //RNN_EXT
-        if (regfile_we_i & ~lsu_err_i ) begin
-          regfile_waddr_lsu <= regfile_waddr_i;
+    end else begin
+      if (setback_i) begin
+        regfile_waddr_lsu   <= '0;
+        regfile_we_lsu      <= 1'b0;
+        lsu_tosprw_wb        <= 3'b0;  //RNN_EXT
+        lsu_tospra_wb        <= 2'b0;
+        regfile_alu_waddr2_wb <= 'b0;  //RNN_EXT
+        dot_spr_operand_wb  <= '0;
+      end else begin
+        if (ex_valid_o) // wb_ready_i is implied
+        begin
+          regfile_we_lsu    <= regfile_we_i & ~lsu_err_i;
+          lsu_tosprw_wb <= lsu_tosprw_ex_i; //RNN_EXT//RNN_EXT
+          lsu_tospra_wb <= lsu_tospra_ex_i;//RNN_EXT
+          dot_spr_operand_wb <= dot_spr_operand_i;
+          regfile_alu_waddr2_wb <= regfile_alu_waddr2_i; //RNN_EXT
+          if (regfile_we_i & ~lsu_err_i ) begin
+            regfile_waddr_lsu <= regfile_waddr_i;
+          end
+        end else if (wb_ready_i) begin
+          // we are ready for a new instruction, but there is none available,
+          // so we just flush the current one out of the pipe
+          regfile_we_lsu    <= 1'b0;
         end
-      end else if (wb_ready_i) begin
-        // we are ready for a new instruction, but there is none available,
-        // so we just flush the current one out of the pipe
-        regfile_we_lsu    <= 1'b0;
       end
     end
   end

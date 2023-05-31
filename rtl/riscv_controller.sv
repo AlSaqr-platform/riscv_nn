@@ -36,6 +36,7 @@ module riscv_controller
 (
   input  logic        clk,
   input  logic        rst_n,
+  input  logic        setback_i,
 
   input  logic        fetch_enable_i,             // Start the decoding
   output logic        ctrl_busy_o,                // Core is busy processing instructions
@@ -1087,32 +1088,33 @@ module riscv_controller
   // update registers
   always_ff @(posedge clk , negedge rst_n)
   begin : UPDATE_REGS
-    if ( rst_n == 1'b0 )
-    begin
+    if ( rst_n == 1'b0 ) begin
       ctrl_fsm_cs    <= RESET;
       jump_done_q    <= 1'b0;
       boot_done_q    <= 1'b0;
       data_err_q     <= 1'b0;
-
       debug_mode_q   <= 1'b0;
       illegal_insn_q <= 1'b0;
-
       instr_valid_irq_flush_q <= 1'b0;
-    end
-    else
-    begin
-      ctrl_fsm_cs    <= ctrl_fsm_ns;
-      boot_done_q    <= boot_done | (~boot_done & boot_done_q);
-      // clear when id is valid (no instruction incoming)
-      jump_done_q    <= jump_done & (~id_ready_i);
-
-      data_err_q     <= data_err_i;
-
-      debug_mode_q   <= debug_mode_n;
-
-      illegal_insn_q <= illegal_insn_n;
-
-      instr_valid_irq_flush_q <= instr_valid_irq_flush_n;
+    end else begin
+      if ( setback_i ) begin
+        ctrl_fsm_cs    <= RESET;
+        jump_done_q    <= 1'b0;
+        boot_done_q    <= 1'b0;
+        data_err_q     <= 1'b0;
+        debug_mode_q   <= 1'b0;
+        illegal_insn_q <= 1'b0;
+        instr_valid_irq_flush_q <= 1'b0;
+      end else begin
+        ctrl_fsm_cs    <= ctrl_fsm_ns;
+        boot_done_q    <= boot_done | (~boot_done & boot_done_q);
+        // clear when id is valid (no instruction incoming)
+        jump_done_q    <= jump_done & (~id_ready_i);
+        data_err_q     <= data_err_i;
+        debug_mode_q   <= debug_mode_n;
+        illegal_insn_q <= illegal_insn_n;
+        instr_valid_irq_flush_q <= instr_valid_irq_flush_n;
+      end
     end
   end
 
