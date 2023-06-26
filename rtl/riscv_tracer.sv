@@ -45,8 +45,8 @@ module riscv_tracer
   input  logic        setback_i,
 
   input  logic        fetch_enable,
-  input  logic [3:0]  core_id,
-  input  logic [5:0]  cluster_id,
+  input  logic [31:0] core_id,
+  input  logic [ 5:0] cluster_id,
 
   input  logic [31:0] pc,
   input  logic [31:0] instr,

@@ -53,7 +53,7 @@ module riscv_cs_registers
   input logic                             setback_i,
 
   // Core and Cluster ID
-  input logic [3:0]                       core_id_i,
+  input logic [31:0]                      core_id_i,
   input logic [5:0]                       cluster_id_i,
   output logic [23:0]                     mtvec_o,
   output logic [23:0]                     utvec_o,
@@ -429,7 +429,8 @@ if(PULP_SECURE==1) begin
       // mcause: exception cause
       12'h342: csr_rdata_int = {mcause_q[5], 26'b0, mcause_q[4:0]};
       // mhartid: unique hardware thread id
-      12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      // 12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      12'hF14: csr_rdata_int = core_id_i;
 
       CSR_DCSR:
                csr_rdata_int = dcsr_q;//
@@ -467,7 +468,8 @@ if(PULP_SECURE==1) begin
       // utvec: user trap-handler base address
       12'h005: csr_rdata_int = {utvec_q, 6'h0, MTVEC_MODE};
       // dublicated mhartid: unique hardware thread id (not official)
-      12'h014: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      // 12'h014: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      12'h014: csr_rdata_int = core_id_i;
       // uepc: exception program counter
       12'h041: csr_rdata_int = uepc_q;
       // ucause: exception cause
@@ -561,7 +563,8 @@ end else begin //PULP_SECURE == 0
       // mcause: exception cause
       12'h342: csr_rdata_int = {mcause_q[5], 26'b0, mcause_q[4:0]};
       // mhartid: unique hardware thread id
-      12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      // 12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      12'hF14: csr_rdata_int = core_id_i;
 
       CSR_DCSR:
                csr_rdata_int = dcsr_q;//
@@ -581,7 +584,8 @@ end else begin //PULP_SECURE == 0
       HWLoop1_COUNTER: csr_rdata_int = hwlp_cnt_i[1];
       /* USER CSR */
       // dublicated mhartid: unique hardware thread id (not official)
-      12'h014: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      // 12'h014: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
+      12'hF14: csr_rdata_int = core_id_i;
       // current priv level (not official)
       12'hC10: csr_rdata_int = {30'h0, priv_lvl_q};
       default:
