@@ -69,6 +69,15 @@ module riscv_if_stage
     output logic       [31:0] pc_id_o,
     output logic              is_fetch_failed_o,
 
+    // Backup bus
+    output logic        backup_branch_o,
+    output logic [31:0] backup_branch_addr_o,
+    // Recovery bus
+    input  logic        pc_recover_i,
+    input  logic [31:0] recovery_program_counter_i,
+    input  logic        recovery_branch_i,
+    input  logic [31:0] recovery_branch_addr_i,
+
     // Forwarding ports - control signals
     input  logic        clear_instr_valid_i,   // clear instruction valid bit in IF/ID pipe
     input  logic        pc_set_i,              // set the program counter to a new value
@@ -126,6 +135,7 @@ module riscv_if_stage
   logic [23:0]       trap_base_addr;
   logic              fetch_failed;
 
+  logic [31:0] prefetch_addr;
 
   // exception PC selection mux
   always_comb
@@ -164,6 +174,12 @@ module riscv_if_stage
     endcase
   end
 
+  assign backup_branch_o = branch_req;
+  assign backup_branch_addr_o = jump_target_ex_i;
+  assign prefetch_addr = (pc_recover_i)      ?
+                         (recovery_branch_i) ? recovery_branch_addr_i : recovery_program_counter_i
+                                             : {fetch_addr_n[31:1], 1'b0};
+
   generate
     if (RDATA_WIDTH == 32) begin : prefetch_32
       // prefetch buffer, caches a fixed number of instructions
@@ -172,11 +188,13 @@ module riscv_if_stage
         .clk               ( clk                         ),
         .rst_n             ( rst_n                       ),
         .setback_i         ( setback_i                   ),
+        .pc_recover_i      ( pc_recover_i                ),
 
         .req_i             ( req_i                       ),
 
-        .branch_i          ( branch_req                  ),
-        .addr_i            ( {fetch_addr_n[31:1], 1'b0}  ),
+        .branch_i          ( branch_req |
+                             recovery_branch_i           ),
+        .addr_i            ( prefetch_addr               ),
 
         .hwloop_i          ( hwlp_jump                   ),
         .hwloop_target_i   ( hwlp_target                 ),
@@ -324,7 +342,6 @@ module riscv_if_stage
     .hwlp_dec_cnt_o        ( hwlp_dec_cnt      ),
     .hwlp_dec_cnt_id_i     ( hwlp_dec_cnt_id_o & {N_HWLP{is_hwlp_id_o}} )
   );
-
 
   assign pc_if_o         = fetch_addr;
 

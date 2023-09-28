@@ -29,6 +29,7 @@ module riscv_prefetch_buffer
   input  logic        clk,
   input  logic        rst_n,
   input  logic        setback_i,
+  input  logic        pc_recover_i,
 
   input  logic        req_i,
 
@@ -253,28 +254,33 @@ module riscv_prefetch_buffer
         instr_addr_o = fetch_addr;
         instr_req_o  = 1'b0;
 
-        if (branch_i | hwlp_branch)
-          instr_addr_o = branch_i ? addr_i : instr_addr_q;
-        else if(hwlp_masked & valid_stored)
-          instr_addr_o = hwloop_target_i;
+        if (pc_recover_i) begin
+          instr_addr_o = addr_i;
+          addr_valid = 1'b1;
+        end else begin
+          if (branch_i | hwlp_branch)
+            instr_addr_o = branch_i ? addr_i : instr_addr_q;
+          else if(hwlp_masked & valid_stored)
+            instr_addr_o = hwloop_target_i;
 
-        if (req_i & (fifo_ready | branch_i | hwlp_branch | (hwlp_masked & valid_stored))) begin
-          instr_req_o = 1'b1;
-          addr_valid  = 1'b1;
+          if (req_i & (fifo_ready | branch_i | hwlp_branch | (hwlp_masked & valid_stored))) begin
+            instr_req_o = 1'b1;
+            addr_valid  = 1'b1;
 
-          if (hwlp_masked & valid_stored) begin
-            fetch_is_hwlp = 1'b1;
+            if (hwlp_masked & valid_stored) begin
+              fetch_is_hwlp = 1'b1;
+            end
+
+            if(instr_gnt_i) //~>  granted request
+              NS = WAIT_RVALID;
+            else begin //~> got a request but no grant
+              NS = WAIT_GNT;
+            end
+
+            if(instr_err_pmp_i)
+              NS = WAIT_JUMP;
+
           end
-
-          if(instr_gnt_i) //~>  granted request
-            NS = WAIT_RVALID;
-          else begin //~> got a request but no grant
-            NS = WAIT_GNT;
-          end
-
-          if(instr_err_pmp_i)
-            NS = WAIT_JUMP;
-
         end
       end // case: IDLE
 

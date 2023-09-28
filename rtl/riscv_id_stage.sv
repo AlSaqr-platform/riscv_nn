@@ -256,9 +256,11 @@ module riscv_id_stage
     output logic [2:0]                     debug_cause_o,
     output logic                           debug_csr_save_o,
     input logic                            debug_req_i,
+    input logic                            debug_resume_i,
     input logic                            debug_single_step_i,
     input logic                            debug_ebreakm_i,
     input logic                            debug_ebreaku_i,
+    output logic                           debug_halted_o,
 
     // Forward Signals
     input logic [5:0]                      regfile_waddr_wb_i,
@@ -1281,6 +1283,7 @@ module riscv_id_stage
     .setback_i                      ( setback_i              ),
 
     .fetch_enable_i                 ( fetch_enable_i         ),
+    .debug_resume_i                 ( debug_resume_i         ),
     .ctrl_busy_o                    ( ctrl_busy_o            ),
     .first_fetch_o                  ( core_ctrl_firstfetch_o ),
     .is_decoding_o                  ( is_decoding_o          ),

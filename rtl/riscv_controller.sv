@@ -126,6 +126,7 @@ module riscv_controller
   output logic [2:0]   debug_cause_o,
   output logic         debug_csr_save_o,
   input  logic         debug_req_i,
+  input  logic         debug_resume_i,
   input  logic         debug_single_step_i,
   input  logic         debug_ebreakm_i,
   input  logic         debug_ebreaku_i,
@@ -1111,7 +1112,7 @@ module riscv_controller
         // clear when id is valid (no instruction incoming)
         jump_done_q    <= jump_done & (~id_ready_i);
         data_err_q     <= data_err_i;
-        debug_mode_q   <= debug_mode_n;
+        debug_mode_q   <= (debug_resume_i) ? 1'b0 : debug_mode_n;
         illegal_insn_q <= illegal_insn_n;
         instr_valid_irq_flush_q <= instr_valid_irq_flush_n;
       end

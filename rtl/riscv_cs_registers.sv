@@ -144,6 +144,19 @@ module riscv_cs_registers
   output logic [N_HWLP_BITS-1:0]          hwlp_regid_o,
   output logic [2:0]                      hwlp_we_o,
 
+  // CSRs Backup
+  output logic [ 6:0] backup_mstatus_o ,
+  output logic [31:0] backup_mscratch_o,
+  output logic [ 5:0] backup_mcause_o  ,
+
+  // CSRs Recovery
+  input  logic        recover_i          ,
+  input  logic [ 6:0] recovery_mstatus_i ,
+  input  logic [23:0] recovery_mtvec_i   ,
+  input  logic [31:0] recovery_mscratch_i,
+  input  logic [31:0] recovery_mepc_i    ,
+  input  logic [ 5:0] recovery_mcause_i  ,
+
   // Performance Counters
   input logic                             id_valid_i, // ID stage is done
   input logic                             is_compressed_i, // compressed instruction in ID
@@ -1345,7 +1358,7 @@ end //PULP_SECURE
         end else begin
           uepc_q         <= uepc_n;
           ucause_q       <= ucause_n;
-          mtvec_q        <= mtvec_n;
+          mtvec_q        <= (recover_i) ? recovery_mtvec_i : mtvec_n;
           utvec_q        <= utvec_n;
           priv_lvl_q     <= priv_lvl_n;
         end
@@ -1455,26 +1468,36 @@ end //PULP_SECURE
             fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
           end
           if (PULP_SECURE == 1) begin
-              mstatus_q      <= mstatus_n ;
+              mstatus_q <= (recover_i) ? {recovery_mstatus_i[6],
+                                         recovery_mstatus_i[5],
+                                         recovery_mstatus_i[4],
+                                         recovery_mstatus_i[3],
+                                         PrivLvl_t'{recovery_mstatus_i[2:1]},
+                                         recovery_mstatus_i[0]}
+                                       : mstatus_n;
           end else begin
-              mstatus_q  <= '{
-                      uie:  1'b0,
-                      mie:  mstatus_n.mie,
-                      upie: 1'b0,
-                      mpie: mstatus_n.mpie,
-                      mpp:  PRIV_LVL_M,
-                      mprv: 1'b0
-                  };
+              mstatus_q  <= (recover_i) ? '{uie:  recovery_mstatus_i[6],
+                                            mie:  recovery_mstatus_i[5],
+                                            upie: recovery_mstatus_i[4],
+                                            mpie: recovery_mstatus_i[3],
+                                            mpp:  PrivLvl_t'{recovery_mstatus_i[2:1]},
+                                            mprv: recovery_mstatus_i[0]}
+                                        : '{uie:  1'b0,
+                                            mie:  mstatus_n.mie,
+                                            upie: 1'b0,
+                                            mpie: mstatus_n.mpie,
+                                            mpp:  PRIV_LVL_M,
+                                            mprv: 1'b0};
           end
           // it doesn't work with mepc gated
           //mepc_q     <= mepc_n    ;
-          mcause_q   <= mcause_n  ;
+          mcause_q <= (recover_i) ? recovery_mcause_i : mcause_n;
           // here it works
           depc_q     <= depc_n    ;
           dcsr_q     <= dcsr_n;
           dscratch0_q<= dscratch0_n;
           dscratch1_q<= dscratch1_n;
-          mscratch_q <= mscratch_n;
+          mscratch_q <= (recover_i) ? recovery_mscratch_i : mscratch_n;
           ivec_fmt_q <= ivec_fmt_n; //added for ivec sb : updated to the new value
           ivec_mixed_cycle_q <= ivec_mixed_cycle_n; //added for ivec sb : update the new value
           ivec_skip_size_q   <= ivec_skip_size_n;   //Added for ivec sb : update new value
@@ -1493,11 +1516,19 @@ end //PULP_SECURE
             macl_a_address_q  <= macl_a_address_n;
             macl_w_address_q  <= macl_w_address_n;
           end
-        mepc_q     <= mepc_n    ;
+        mepc_q <= (recover_i) ? recovery_mepc_i : mepc_n;
       end
     end
   end
 
+  assign backup_mstatus_o  = {mstatus_q.uie,
+                              mstatus_q.mie,
+                              mstatus_q.upie,
+                              mstatus_q.mpie,
+                              mstatus_q.mpp,
+                              mstatus_q.mprv};
+  assign backup_mscratch_o = mscratch_q;
+  assign backup_mcause_o   = mcause_q;
   /////////////////////////////////////////////////////////////////
   //   ____            __     ____                  _            //
   // |  _ \ ___ _ __ / _|   / ___|___  _   _ _ __ | |_ ___ _ __  //

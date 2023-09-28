@@ -122,13 +122,56 @@ module riscv_core
 
   // Debug Interface
   input logic                            debug_req_i,
+  input logic                            debug_resume_i,
+  output logic                           debug_mode_o,
 
 
   // CPU Control Signals
   input logic                            fetch_enable_i,
   output logic                           core_busy_o,
 
-  input logic [N_EXT_PERF_COUNTERS-1:0]  ext_perf_counters_i
+  input logic [N_EXT_PERF_COUNTERS-1:0]  ext_perf_counters_i,
+
+  // Recovery Ports for RF
+  input logic        recover_i        ,
+  // Write Port A
+  input logic [5:0]  regfile_waddr_a_i,
+  input logic [31:0] regfile_wdata_a_i,
+  input logic        regfile_we_a_i   ,
+  // Write Port B
+  input logic [5:0]  regfile_waddr_b_i,
+  input logic [31:0] regfile_wdata_b_i,
+  input logic        regfile_we_b_i,
+  // RF backup ports
+  // Port A
+  output logic         regfile_we_a_o   ,
+  output logic [ 5:0]  regfile_waddr_a_o,
+  output logic [31:0]  regfile_wdata_a_o,
+  // Port B
+  output logic         regfile_we_b_o   ,
+  output logic [ 5:0]  regfile_waddr_b_o,
+  output logic [31:0]  regfile_wdata_b_o,
+  // Program Counter Backup
+  output logic [31:0] backup_program_counter_o,
+  output logic        backup_branch_o,
+  output logic [31:0] backup_branch_addr_o,
+  // Program Counter Recovery
+  input  logic        pc_recover_i,
+  input  logic [31:0] recovery_program_counter_i,
+  input  logic        recovery_branch_i,
+  input  logic [31:0] recovery_branch_addr_i,
+  // CSRs Backup
+  output logic [ 6:0] backup_mstatus_o ,
+  output logic [23:0] backup_mtvec_o   ,
+  output logic [31:0] backup_mscratch_o,
+  output logic [31:0] backup_mepc_o    ,
+  output logic [ 5:0] backup_mcause_o  ,
+  // CSRs Recovery
+  input  logic [ 6:0] recovery_mstatus_i ,
+  input  logic [23:0] recovery_mtvec_i   ,
+  input  logic [31:0] recovery_mscratch_i,
+  input  logic [31:0] recovery_mepc_i    ,
+  input  logic [ 5:0] recovery_mcause_i
 );
 
   localparam N_HWLP_BITS = $clog2(N_HWLP);
@@ -547,6 +590,15 @@ module riscv_core
     .pc_id_o             ( pc_id             ),
     .is_fetch_failed_o   ( is_fetch_failed_id ),
 
+    // Program Counter Backup
+    .backup_branch_o            (backup_branch_o             ),
+    .backup_branch_addr_o       (backup_branch_addr_o        ),
+    // Program Counter Recovery
+    .pc_recover_i               ( pc_recover_i               ),
+    .recovery_program_counter_i ( recovery_program_counter_i ),
+    .recovery_branch_i          ( recovery_branch_i          ),
+    .recovery_branch_addr_i     ( recovery_branch_addr_i     ),
+
     // control signals
     .clear_instr_valid_i ( clear_instr_valid ),
     .pc_set_i            ( pc_set            ),
@@ -577,7 +629,32 @@ module riscv_core
     .if_busy_o           ( if_busy           ),
     .perf_imiss_o        ( perf_imiss        )
   );
+  assign backup_program_counter_o = pc_ex;
 
+  logic [5:0]  regfile_waddr_a,
+               regfile_waddr_b;
+  logic [31:0] regfile_wdata_a,
+               regfile_wdata_b;
+  logic        regfile_we_a,
+               regfile_we_b;
+
+  assign regfile_waddr_a = ( recover_i ) ? regfile_waddr_a_i : regfile_waddr_fw_wb;
+  assign regfile_waddr_b = ( recover_i ) ? regfile_waddr_b_i : regfile_alu_waddr_fw;
+
+  assign regfile_waddr_a_o = regfile_waddr_a;
+  assign regfile_waddr_b_o = regfile_waddr_b;
+
+  assign regfile_wdata_a = ( recover_i ) ? regfile_wdata_a_i : regfile_wdata;
+  assign regfile_wdata_b = ( recover_i ) ? regfile_wdata_b_i : regfile_alu_wdata_fw;
+
+  assign regfile_wdata_a_o = regfile_wdata_a;
+  assign regfile_wdata_b_o = regfile_wdata_b;
+
+  assign regfile_we_a = ( recover_i ) ? regfile_we_a_i : regfile_we_wb;
+  assign regfile_we_b = ( recover_i ) ? regfile_we_b_i : regfile_alu_we_fw;
+
+  assign regfile_we_a_o = regfile_we_a;
+  assign regfile_we_b_o = regfile_we_b;
 
   /////////////////////////////////////////////////
   //   ___ ____    ____ _____  _    ____ _____   //
@@ -801,18 +878,19 @@ module riscv_core
     .debug_cause_o                ( debug_cause          ),
     .debug_csr_save_o             ( debug_csr_save       ),
     .debug_req_i                  ( debug_req_i          ),
+    .debug_resume_i               ( debug_resume_i       ),
     .debug_single_step_i          ( debug_single_step    ),
     .debug_ebreakm_i              ( debug_ebreakm        ),
     .debug_ebreaku_i              ( debug_ebreaku        ),
 
     // Forward Signals
-    .regfile_waddr_wb_i           ( regfile_waddr_fw_wb  ),  // Write address ex-wb pipeline //RNN_EXT prev fw_wb_o
-    .regfile_we_wb_i              ( regfile_we_wb        ),  // write enable for the register file
-    .regfile_wdata_wb_i           ( regfile_wdata        ),  // write data to commit in the register file
+    .regfile_waddr_wb_i           ( regfile_waddr_a      ),  // Write address ex-wb pipeline //RNN_EXT prev fw_wb_o
+    .regfile_we_wb_i              ( regfile_we_a         ),  // write enable for the register file
+    .regfile_wdata_wb_i           ( regfile_wdata_a      ),  // write data to commit in the register file
 
-    .regfile_alu_waddr_fw_i       ( regfile_alu_waddr_fw ),
-    .regfile_alu_we_fw_i          ( regfile_alu_we_fw    ),
-    .regfile_alu_wdata_fw_i       ( regfile_alu_wdata_fw ),
+    .regfile_alu_waddr_fw_i       ( regfile_waddr_b      ),
+    .regfile_alu_we_fw_i          ( regfile_we_b         ),
+    .regfile_alu_wdata_fw_i       ( regfile_wdata_b      ),
 
     // from ALU
     .mult_multicycle_i            ( mult_multicycle      ),
@@ -823,6 +901,8 @@ module riscv_core
     .perf_ld_stall_o              ( perf_ld_stall        ),
     .perf_pipeline_stall_o        ( perf_pipeline_stall  )
   );
+
+  assign debug_mode_o = debug_mode;
 
 
   /////////////////////////////////////////////////////
@@ -1189,6 +1269,18 @@ module riscv_core
     .hwlp_we_o               ( csr_hwlp_we        ),
     .hwlp_data_o             ( csr_hwlp_data      ),
 
+    // CSRs Backup
+    .backup_mstatus_o        ( backup_mstatus_o  ),
+    .backup_mscratch_o       ( backup_mscratch_o ),
+    .backup_mcause_o         ( backup_mcause_o   ),
+    // CSRs Recovery
+    .recover_i               ( recover_i           ),
+    .recovery_mstatus_i      ( recovery_mstatus_i  ),
+    .recovery_mtvec_i        ( recovery_mtvec_i    ),
+    .recovery_mscratch_i     ( recovery_mscratch_i ),
+    .recovery_mepc_i         ( recovery_mepc_i     ),
+    .recovery_mcause_i       ( recovery_mcause_i   ),
+
     // performance counter related signals
     .id_valid_i              ( id_valid           ),
     .is_compressed_i         ( is_compressed_id   ),
@@ -1213,6 +1305,9 @@ module riscv_core
 
     .ext_counters_i          ( ext_perf_counters_i                    )
   );
+
+  assign backup_mtvec_o = mtvec;
+  assign backup_mepc_o  = mepc;
 
   // Modified for ivec sb : now if a mixed op is being executed we also write into the csr at the same time.
   always_comb begin
