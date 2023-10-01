@@ -260,7 +260,6 @@ module riscv_id_stage
     input logic                            debug_single_step_i,
     input logic                            debug_ebreakm_i,
     input logic                            debug_ebreaku_i,
-    output logic                           debug_halted_o,
 
     // Forward Signals
     input logic [5:0]                      regfile_waddr_wb_i,
