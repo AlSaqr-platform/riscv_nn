@@ -1468,19 +1468,19 @@ end //PULP_SECURE
             fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
           end
           if (PULP_SECURE == 1) begin
-              mstatus_q <= (recover_i) ? {recovery_mstatus_i[6],
-                                         recovery_mstatus_i[5],
-                                         recovery_mstatus_i[4],
-                                         recovery_mstatus_i[3],
-                                         recovery_mstatus_i[2:1],
-                                         recovery_mstatus_i[0]}
-                                       : mstatus_n;
+              mstatus_q <= (recover_i) ? '{recovery_mstatus_i[6],
+                                           recovery_mstatus_i[5],
+                                           recovery_mstatus_i[4],
+                                           recovery_mstatus_i[3],
+                                           PrivLvl_t'{recovery_mstatus_i[2:1]},
+                                           recovery_mstatus_i[0]}
+                                       :   mstatus_n;
           end else begin
               mstatus_q  <= (recover_i) ? '{uie:  recovery_mstatus_i[6],
                                             mie:  recovery_mstatus_i[5],
                                             upie: recovery_mstatus_i[4],
                                             mpie: recovery_mstatus_i[3],
-                                            mpp:  recovery_mstatus_i[2:1],
+                                            mpp:  PrivLvl_t'{recovery_mstatus_i[2:1]},
                                             mprv: recovery_mstatus_i[0]}
                                         : '{uie:  1'b0,
                                             mie:  mstatus_n.mie,
