@@ -1472,7 +1472,7 @@ end //PULP_SECURE
                                            recovery_mstatus_i[5],
                                            recovery_mstatus_i[4],
                                            recovery_mstatus_i[3],
-                                           PrivLvl_t'{recovery_mstatus_i[2:1]},
+                                           PRIV_LVL_M,
                                            recovery_mstatus_i[0]}
                                        :   mstatus_n;
           end else begin
@@ -1480,7 +1480,7 @@ end //PULP_SECURE
                                             mie:  recovery_mstatus_i[5],
                                             upie: recovery_mstatus_i[4],
                                             mpie: recovery_mstatus_i[3],
-                                            mpp:  PrivLvl_t'{recovery_mstatus_i[2:1]},
+                                            mpp:  PRIV_LVL_M,
                                             mprv: recovery_mstatus_i[0]}
                                         : '{uie:  1'b0,
                                             mie:  mstatus_n.mie,
