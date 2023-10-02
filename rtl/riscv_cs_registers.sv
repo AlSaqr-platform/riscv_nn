@@ -1418,7 +1418,7 @@ end //PULP_SECURE
           fpu_src_fmt_q  <= fpu_src_fmt_n; //aggiunta sb fpu
           fpu_int_fmt_q <= fpu_int_fmt_n; //aggiunta sb fpu
         end
-        if (PULP_SECURE == 1) begin
+        /*if (PULP_SECURE == 1) begin
             mstatus_q      <= mstatus_n ;
         end else begin
             mstatus_q  <= '{
@@ -1429,12 +1429,12 @@ end //PULP_SECURE
                     mpp:  PRIV_LVL_M,
                     mprv: 1'b0
                 };
-        end
+        end*/
 
         // it doesn't work with mepc gated
 
         //mepc_q     <= mepc_n    ;
-        mcause_q   <= mcause_n  ;
+        //mcause_q   <= mcause_n  ; //also mcause at risk
 
         // here it works
 
@@ -1464,8 +1464,22 @@ end //PULP_SECURE
           macl_a_address_q  <= macl_a_address_n;
           macl_w_address_q  <= macl_w_address_n;
         end
-
-      mepc_q     <= mepc_n    ;
+       
+       if (PULP_SECURE == 1) begin
+            mstatus_q      <= mstatus_n ;
+        end else begin
+            mstatus_q  <= '{
+                    uie:  1'b0,
+                    mie:  mstatus_n.mie,
+                    upie: 1'b0,
+                    mpie: mstatus_n.mpie,
+                    mpp:  PRIV_LVL_M,
+                    mprv: 1'b0
+                };
+        end
+       
+       mepc_q     <= mepc_n    ;
+       mcause_q   <= mcause_n  ;
 
     end
   end
