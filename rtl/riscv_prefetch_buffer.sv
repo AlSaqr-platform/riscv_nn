@@ -433,7 +433,10 @@ module riscv_prefetch_buffer
       end else begin
         CS              <= NS;
         hwlp_CS         <= hwlp_NS;
-        
+
+        if (pc_recover_i)
+          instr_addr_q <= addr_i;
+
         if (addr_valid) begin
           instr_addr_q    <= (hwloop_speculative & ~branch_i) ? hwloop_target_i : instr_addr_o;
         end
