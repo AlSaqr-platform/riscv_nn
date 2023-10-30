@@ -153,6 +153,7 @@ module riscv_core
   output logic [31:0]  regfile_wdata_b_o,
   // Program Counter Backup
   output logic [31:0] backup_program_counter_o,
+  output logic [31:0] backup_program_counter_if_o,
   output logic        backup_branch_o,
   output logic [31:0] backup_branch_addr_o,
   // Program Counter Recovery
@@ -630,6 +631,7 @@ module riscv_core
     .perf_imiss_o        ( perf_imiss        )
   );
   assign backup_program_counter_o = pc_ex;
+  assign backup_program_counter_if_o = pc_if;
 
   logic [5:0]  regfile_waddr_a,
                regfile_waddr_b;
