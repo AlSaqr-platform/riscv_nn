@@ -53,6 +53,7 @@ module riscv_ex_stage
   input logic                            clk,
   input logic                            rst_n,
   input logic                            setback_i,
+  input logic [31:0]                     hart_id_i,
 
   // ALU signals from ID stage
   input logic [ALU_OP_WIDTH-1:0]         alu_operator_i,
@@ -513,6 +514,16 @@ module riscv_ex_stage
          end
          else begin
 
+         logic fpu_busy;
+         logic fpu_clk;
+
+         tc_clk_gating i_fpu_clk_gate (
+           .clk_i ( clk ),
+           .en_i  ( apu_en_i | fpu_busy ),
+           .test_en_i ( '0 ),
+           .clk_o ( fpu_clk )
+         );
+
            //////////////////////////////
            //   ______ _____  _    _   //
            //  |  ____|  __ \| |  | |  //
@@ -576,9 +587,9 @@ module riscv_ex_stage
             .Implementation ( FPU_IMPLEMENTATION ),
             .TagType        ( logic              )
           ) i_fpnew_bulk (
-            .clk_i          ( clk                                   ),
+            .clk_i          ( fpu_clk                               ),
             .rst_ni         ( rst_n                                 ),
-            .hart_id_i      ( '0                                    ),
+            .hart_id_i      ( hart_id_i                             ),
             .operands_i     ( apu_operands_i                        ),
             .rnd_mode_i     ( fpnew_pkg::roundmode_e'(fp_rnd_mode)  ),
             .op_i           ( fpnew_pkg::operation_e'(fpu_op)       ),
@@ -597,7 +608,7 @@ module riscv_ex_stage
             .tag_o          ( /* unused */                          ),
             .out_valid_o    ( apu_valid                             ),
             .out_ready_i    ( 1'b1                                  ),
-            .busy_o         ( /* unused */                          )
+            .busy_o         ( fpu_busy                              )
           );
 
           assign fpu_fflags_we_o          = apu_valid;

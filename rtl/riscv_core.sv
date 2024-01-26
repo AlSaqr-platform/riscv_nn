@@ -933,6 +933,7 @@ module riscv_core
     .clk                        ( clk                          ),
     .rst_n                      ( rst_ni                       ),
     .setback_i                  ( setback_i                    ),
+    .hart_id_i                  ( core_id_i                    ),
 
     // Alu signals from ID stage
     .alu_en_i                   ( alu_en_ex                    ),
