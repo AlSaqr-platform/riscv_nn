@@ -453,6 +453,8 @@ parameter bit C_XF16    = 1'b1; // Is half-precision float extension (Xf16) enab
 parameter bit C_XF16ALT = 1'b1; // Is alternative half-precision float extension (Xf16alt) enabled
 parameter bit C_XF8     = 1'b1; // Is quarter-precision float extension (Xf8) enabled
 parameter bit C_XFVEC   = 1'b1; // Is vectorial float extension (Xfvec) enabled
+parameter bit C_XF8ALT  = 1'b0;
+
 
 // FPnew configuration
 parameter C_FPNEW_OPBITS   = fpnew_pkg::OP_BITS;
@@ -468,6 +470,8 @@ parameter int unsigned C_LAT_FP8        = 'd1;
 parameter int unsigned C_LAT_DIVSQRT    = 'd2; // divsqrt post-processing pipe
 parameter int unsigned C_LAT_CONV       = 'd1;
 parameter int unsigned C_LAT_NONCOMP    = 'd1;
+parameter int unsigned C_LAT_FP8ALT     = 'd1;
+parameter int unsigned C_LAT_DOTP       = 'd1;
 
 // General FPU-specific defines
 
