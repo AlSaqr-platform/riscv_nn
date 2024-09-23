@@ -544,7 +544,7 @@ module riscv_ex_stage
             Width:         C_FLEN,
             EnableVectors: C_XFVEC,
             EnableNanBox:  1'b0,
-            FpFmtMask:     {C_RVF, C_RVD, C_XF16, C_XF8, C_XF16ALT},
+            FpFmtMask:     {C_RVF, C_XF64, C_RVD, C_XF16, C_XF8, C_XF16ALT},
             IntFmtMask:    {C_XFVEC && C_XF8, C_XFVEC && (C_XF16 || C_XF16ALT), 1'b1, 1'b0}
           };
 
