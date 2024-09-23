@@ -52,6 +52,7 @@ module riscv_ex_stage
 (
   input logic                            clk,
   input logic                            rst_n,
+  input logic [31:0]                     hart_id_i,
 
   // ALU signals from ID stage
   input logic [ALU_OP_WIDTH-1:0]         alu_operator_i,
@@ -572,6 +573,7 @@ module riscv_ex_stage
           ) i_fpnew_bulk (
             .clk_i          ( clk                                   ),
             .rst_ni         ( rst_n                                 ),
+            .hart_id_i      ( hart_id_i                             ),
             .operands_i     ( apu_operands_i                        ),
             .rnd_mode_i     ( fpnew_pkg::roundmode_e'(fp_rnd_mode)  ),
             .op_i           ( fpnew_pkg::operation_e'(fpu_op)       ),
