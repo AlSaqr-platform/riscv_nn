@@ -65,7 +65,6 @@ module riscv_core
   // Clock and Reset
   input logic                            clk_i,
   input logic                            rst_ni,
-  input logic [31:0]                     hart_id_i,
 
   input logic                            clock_en_i, // enable clock, otherwise it is gated
   input logic                            test_en_i, // enable all clock gates for testing
@@ -845,7 +844,6 @@ module riscv_core
     // Global signals: Clock and active low asynchronous reset
     .clk                        ( clk                          ),
     .rst_n                      ( rst_ni                       ),
-    .hart_id_i                  ( hart_id_i                    ),
 
     // Alu signals from ID stage
     .alu_en_i                   ( alu_en_ex                    ),
